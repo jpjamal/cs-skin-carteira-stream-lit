@@ -1,0 +1,18 @@
+services:
+  cs2-tracker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cs2-skin-tracker
+    ports:
+      - "8501:8501"
+    volumes:
+      # Dados persistentes — sobrevivem a rebuilds do container
+      - tracker_data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+volumes:
+  tracker_data:
+    driver: local
