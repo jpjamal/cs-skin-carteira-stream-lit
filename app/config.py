@@ -8,8 +8,12 @@ APP_ICON = "🎮"
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path("/app/data") if Path("/app").exists() else BASE_DIR / "data"
 DATA_FILE = DATA_DIR / "skins.json"
+DATA_FILE_BACKUP = DATA_DIR / "skins.backup.json"
 PRICE_CACHE_FILE = DATA_DIR / "price_cache.json"
 PROVIDER_STATE_FILE = DATA_DIR / "provider_state.json"
+THUMBNAILS_DIR = DATA_DIR / "thumbs"
+THUMBNAIL_STATE_FILE = DATA_DIR / "thumbnail_state.json"
+CATALOG_SNAPSHOT_FILE = DATA_DIR / "current_skin_catalog.json"
 
 TIPOS_ITEM = [
     "Arma", "Faca", "Luva", "Adesivo", "Agente",
@@ -42,3 +46,17 @@ FX_CACHE_TTL_SECONDS = 60 * 60 * 12
 # Protecao dos providers
 STEAM_FAILURE_THRESHOLD = 3
 STEAM_COOLDOWN_SECONDS = 60 * 30
+
+# Atualizacao
+PRICE_STALE_AFTER_HOURS = 6
+
+# Miniaturas
+THUMBNAIL_ALLOWED_SOURCES = {
+    "community.cloudflare.steamstatic.com": ("/economy/image/",),
+    "community.akamai.steamstatic.com": ("/economy/image/",),
+}
+THUMBNAIL_TTL_SECONDS = 60 * 60 * 24 * 7
+THUMBNAIL_TIMEOUT_SECONDS = 5
+THUMBNAIL_MAX_BYTES = 300 * 1024
+THUMBNAIL_ERROR_COOLDOWN_SECONDS = 60 * 30
+THUMBNAIL_PAGE_SIZE = 24

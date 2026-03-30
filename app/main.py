@@ -32,8 +32,9 @@ html, body, [class*="css"] {
 }
 
 .block-container {
-    padding-top: 1.25rem;
+    padding-top: 1.8rem;
     padding-bottom: 2rem;
+    max-width: 1480px;
 }
 
 [data-testid="stMetric"] {
@@ -157,9 +158,16 @@ def _sidebar_nav() -> str:
         st.caption("Carteira visual para acompanhar preco, lucro e qualidade da estimativa.")
         st.divider()
 
+        pages = {
+            "Carteira": "Carteira",
+            "Inventario": "Inventario",
+            "Adicionar Skin": "Adicionar Skin",
+            "Configuracoes": "Configuracoes",
+        }
+
         pagina = st.radio(
             "Navegacao",
-            options=["Carteira", "Adicionar Skin", "Configuracoes"],
+            options=list(pages.keys()),
             label_visibility="collapsed",
         )
 
@@ -167,7 +175,7 @@ def _sidebar_nav() -> str:
         st.caption("CS2 Skin Tracker v1.0")
         st.caption("Precos via Steam Market / CSFloat")
 
-    return pagina
+    return pages[pagina]
 
 
 def main() -> None:
@@ -177,6 +185,10 @@ def main() -> None:
 
     if pagina == "Carteira":
         from app.ui.carteira import render
+
+        render()
+    elif pagina == "Inventario":
+        from app.ui.inventario import render
 
         render()
     elif pagina == "Adicionar Skin":

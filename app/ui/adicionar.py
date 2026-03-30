@@ -80,6 +80,8 @@ def render() -> None:
                     skin.preco_cache_hit = resultado.cache_hit
                     skin.preco_stale = resultado.stale
                     skin.preco_atualizado_em = resultado.atualizado_em
+                    if resultado.imagem_url:
+                        skin.imagem_url = resultado.imagem_url
 
                     st.success(f"Preco encontrado via **{resultado.provider}**: R$ {resultado.preco:.2f}")
                     if resultado.metodo:

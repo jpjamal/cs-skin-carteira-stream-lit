@@ -20,6 +20,7 @@ COMPARABLES_LIMIT = 20
 MIN_RELIABLE_COMPARABLES = 3
 PREFERRED_COMPARABLES = 5
 WIDE_FLOAT_MARGIN = 0.03
+STEAM_IMAGE_BASE_URL = "https://community.cloudflare.steamstatic.com/economy/image"
 
 
 class CSFloatProvider(PriceProvider):
@@ -30,6 +31,13 @@ class CSFloatProvider(PriceProvider):
     def __init__(self, api_key: str = "") -> None:
         self._api_key = api_key
         self._last_request: float = 0.0
+        self._session = requests.Session()
+        self._session.headers.update(
+            {
+                "User-Agent": "CS2-Skin-Tracker/1.0",
+                "Accept": "application/json",
+            }
+        )
 
     def esta_configurado(self) -> bool:
         return bool(self._api_key)
@@ -57,7 +65,7 @@ class CSFloatProvider(PriceProvider):
             paint_seed=paint_seed,
         )
 
-        melhor_parcial: tuple[float, int, str] | None = None
+        melhor_parcial: tuple[float, int, str, list[dict]] | None = None
 
         try:
             for label, params, usar_float_alvo in cenarios:
@@ -73,14 +81,14 @@ class CSFloatProvider(PriceProvider):
                     continue
 
                 if usados >= MIN_RELIABLE_COMPARABLES:
-                    return self._build_success_result(preco_usd, label, usados)
+                    return self._build_success_result(preco_usd, label, usados, listings)
 
                 if melhor_parcial is None or usados > melhor_parcial[1]:
-                    melhor_parcial = (preco_usd, usados, label)
+                    melhor_parcial = (preco_usd, usados, label, listings)
 
             if melhor_parcial:
-                preco_usd, usados, label = melhor_parcial
-                return self._build_success_result(preco_usd, f"{label}, baixa amostra", usados)
+                preco_usd, usados, label, partial_listings = melhor_parcial
+                return self._build_success_result(preco_usd, f"{label}, baixa amostra", usados, partial_listings)
 
             return PriceResult.falha(
                 self.nome,
@@ -143,7 +151,7 @@ class CSFloatProvider(PriceProvider):
     def _buscar_listings(self, params: dict) -> list[dict]:
         self._rate_limit()
 
-        resp = requests.get(
+        resp = self._session.get(
             CSFLOAT_LISTINGS_URL,
             headers={"Authorization": self._api_key},
             params=params,
@@ -196,7 +204,7 @@ class CSFloatProvider(PriceProvider):
         precos = [item[0] for item in selecionados]
         return round(float(median(precos)), 2), len(precos)
 
-    def _build_success_result(self, preco_usd: float, label: str, usados: int) -> PriceResult:
+    def _build_success_result(self, preco_usd: float, label: str, usados: int, listings: list[dict] | None = None) -> PriceResult:
         taxa = self._buscar_cambio()
         preco_brl = round(preco_usd * taxa, 2)
         if "pattern" in label and usados >= 3:
@@ -205,6 +213,7 @@ class CSFloatProvider(PriceProvider):
             confianca = "Media"
         else:
             confianca = "Baixa"
+        imagem_url = self._extrair_imagem_url(listings or [])
         return PriceResult(
             preco=preco_brl,
             moeda="BRL",
@@ -212,7 +221,17 @@ class CSFloatProvider(PriceProvider):
             metodo=label,
             amostra=usados,
             confianca=confianca,
+            imagem_url=imagem_url,
         )
+
+    @staticmethod
+    def _extrair_imagem_url(listings: list[dict]) -> str:
+        for listing in listings:
+            item = listing.get("item") or {}
+            icon_url = item.get("icon_url")
+            if icon_url:
+                return f"{STEAM_IMAGE_BASE_URL}/{icon_url}/160fx160f"
+        return ""
 
     def _rate_limit(self) -> None:
         elapsed = time.time() - self._last_request

@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import re
 import time
-from urllib.parse import quote
 
 import requests
 
@@ -38,6 +37,13 @@ class SteamMarketProvider(PriceProvider):
 
     def __init__(self) -> None:
         self._last_request: float = 0.0
+        self._session = requests.Session()
+        self._session.headers.update(
+            {
+                "User-Agent": "CS2-Skin-Tracker/1.0",
+                "Accept": "application/json",
+            }
+        )
 
     def esta_configurado(self) -> bool:
         return True
@@ -55,7 +61,7 @@ class SteamMarketProvider(PriceProvider):
         }
 
         try:
-            resp = requests.get(STEAM_URL, params=params, timeout=15)
+            resp = self._session.get(STEAM_URL, params=params, timeout=15)
             resp.raise_for_status()
             data = resp.json()
 

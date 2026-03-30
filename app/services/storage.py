@@ -1,4 +1,4 @@
-"""Serviço de persistência em JSON."""
+"""Servico de persistencia em JSON com escrita atomica e fallback por backup."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 import logging
 from pathlib import Path
 
-from app.config import DATA_DIR, DATA_FILE
+from app.config import DATA_DIR, DATA_FILE, DATA_FILE_BACKUP
 from app.models import AppData, Skin
 
 logger = logging.getLogger(__name__)
@@ -16,26 +16,52 @@ def _ensure_dir() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _read_app_data(path: Path) -> AppData:
+    raw = path.read_text(encoding="utf-8")
+    return AppData.model_validate_json(raw)
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    temp_path.write_text(content, encoding="utf-8")
+    temp_path.replace(path)
+
+
 def carregar_dados() -> AppData:
-    """Carrega os dados do arquivo JSON. Retorna dados vazios se não existir."""
+    """Carrega os dados do arquivo JSON. Usa backup se o principal falhar."""
     _ensure_dir()
     if not DATA_FILE.exists():
         return AppData()
+
     try:
-        raw = DATA_FILE.read_text(encoding="utf-8")
-        return AppData.model_validate_json(raw)
+        return _read_app_data(DATA_FILE)
     except Exception:
         logger.exception("Erro ao carregar %s", DATA_FILE)
-        return AppData()
+
+    if DATA_FILE_BACKUP.exists():
+        try:
+            logger.warning("Tentando recuperar dados do backup %s", DATA_FILE_BACKUP)
+            data = _read_app_data(DATA_FILE_BACKUP)
+            salvar_dados(data)
+            return data
+        except Exception:
+            logger.exception("Erro ao carregar backup %s", DATA_FILE_BACKUP)
+
+    return AppData()
 
 
 def salvar_dados(data: AppData) -> None:
-    """Salva os dados no arquivo JSON."""
+    """Salva os dados com escrita atomica e backup do ultimo estado valido."""
     _ensure_dir()
-    DATA_FILE.write_text(
-        data.model_dump_json(indent=2),
-        encoding="utf-8",
-    )
+    content = data.model_dump_json(indent=2)
+
+    if DATA_FILE.exists():
+        try:
+            _atomic_write(DATA_FILE_BACKUP, DATA_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            logger.exception("Nao foi possivel atualizar backup %s", DATA_FILE_BACKUP)
+
+    _atomic_write(DATA_FILE, content)
 
 
 def adicionar_skin(skin: Skin) -> AppData:
@@ -63,12 +89,12 @@ def atualizar_skin(skin: Skin) -> AppData:
 
 
 def salvar_config(data: AppData) -> None:
-    """Salva apenas as configurações."""
+    """Salva apenas as configuracoes."""
     salvar_dados(data)
 
 
 def importar_seed_data(seed_path: Path) -> AppData:
-    """Importa dados iniciais de um JSON seed se o data file não existir."""
+    """Importa dados iniciais de um JSON seed se o arquivo principal nao existir."""
     _ensure_dir()
     if DATA_FILE.exists():
         return carregar_dados()

@@ -63,6 +63,7 @@ class Skin(BaseModel):
     preco_cache_hit: bool = False
     preco_stale: bool = False
     preco_atualizado_em: str = ""
+    imagem_url: str = ""
     notas: str = ""
     market_hash_name: str = ""
     criado_em: str = Field(default_factory=lambda: datetime.now().isoformat())
@@ -154,6 +155,7 @@ class PriceCacheEntry(BaseModel):
     metodo: str = ""
     amostra: int = 0
     confianca: str = ""
+    imagem_url: str = ""
     ttl_seconds: int
     atualizado_em_ts: float
 

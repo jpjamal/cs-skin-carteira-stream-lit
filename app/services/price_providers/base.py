@@ -22,6 +22,7 @@ class PriceResult:
     amostra: int = 0
     confianca: str = ""
     atualizado_em: str = ""
+    imagem_url: str = ""
 
     def __post_init__(self) -> None:
         if not self.atualizado_em:

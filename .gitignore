@@ -9,10 +9,15 @@ venv/
 
 # Data (persistido via Docker volume)
 data/skins.json
+data/skins.backup.json
+data/price_cache.json
+data/provider_state.json
+data/current_skin_catalog.json
 
 # Environment
 .env
 .env.*
+tmp/
 
 # IDE
 .vscode/

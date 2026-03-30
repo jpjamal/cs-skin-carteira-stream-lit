@@ -7,16 +7,26 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from app.config import DESGASTES, PLATAFORMAS, PRICE_PROVIDERS, TIPOS_ITEM
+from app.config import DESGASTES, PLATAFORMAS, PRICE_PROVIDERS, PRICE_STALE_AFTER_HOURS, THUMBNAIL_PAGE_SIZE, TIPOS_ITEM
 from app.models import AppData, Skin
+from app.services.catalog_service import hydrate_app_data_from_catalog
 from app.services.price_providers.base import PriceResult
 from app.services.price_service import PriceService
 from app.services.storage import atualizar_skin, carregar_dados, remover_skin, salvar_dados
+from app.services.thumbnail_service import ThumbnailService
 
 PROVIDER_LABELS = {
     "steam": "Steam Market",
     "csfloat": "CSFloat",
 }
+
+UPDATE_MODES = {
+    "Pendentes e antigos": "pending_stale",
+    "Somente pendentes": "pending_only",
+    "Tudo": "all",
+}
+
+THUMBNAIL_SERVICE = ThumbnailService()
 
 
 def _format_datetime(value: str) -> str:
@@ -28,23 +38,38 @@ def _format_datetime(value: str) -> str:
         return value
 
 
+def _is_stale(skin: Skin, stale_after_hours: int = PRICE_STALE_AFTER_HOURS) -> bool:
+    if not skin.preco_atualizado_em:
+        return True
+    try:
+        atualizado = datetime.fromisoformat(skin.preco_atualizado_em)
+    except ValueError:
+        return True
+    return (datetime.now() - atualizado).total_seconds() >= stale_after_hours * 3600
+
+
+def _status_label(skin: Skin) -> str:
+    if skin.preco_atual <= 0:
+        return "Sem preco"
+    if skin.preco_stale:
+        return "Cache expirado"
+    if skin.preco_cache_hit:
+        return "Cache"
+    return "Ao vivo"
+
+
 def _badge_status(value: str) -> str:
     mapping = {
-        "Ao vivo": "● Ao vivo",
-        "Cache": "● Cache",
-        "Cache expirado": "● Cache expirado",
-        "Sem preco": "● Sem preco",
+        "Ao vivo": "Ao vivo",
+        "Cache": "Cache",
+        "Cache expirado": "Cache expirado",
+        "Sem preco": "Sem preco",
     }
     return mapping.get(value, value)
 
 
 def _badge_confianca(value: str) -> str:
-    mapping = {
-        "Alta": "Alta",
-        "Media": "Media",
-        "Baixa": "Baixa",
-    }
-    return mapping.get(value, value or "-")
+    return value or "-"
 
 
 def _aplicar_resultado_preco(skin: Skin, result: PriceResult) -> None:
@@ -56,23 +81,131 @@ def _aplicar_resultado_preco(skin: Skin, result: PriceResult) -> None:
     skin.preco_cache_hit = result.cache_hit
     skin.preco_stale = result.stale
     skin.preco_atualizado_em = result.atualizado_em
+    if result.imagem_url:
+        skin.imagem_url = result.imagem_url
 
 
-def _hero(iof_percentual: float) -> None:
+def _render_galeria(skins: list[Skin]) -> None:
+    skins_com_imagem = [skin for skin in skins if skin.imagem_url]
+    if not skins_com_imagem:
+        st.info("Nenhuma miniatura salva ainda. A aba Inventario consegue aplicar um catalogo local opcional ou aproveitar imagens vindas do CSFloat.")
+        return
+
+    with st.expander("Galeria das skins", expanded=True):
+        controles_1, controles_2, controles_3 = st.columns([1.2, 1.1, 1.7])
+        with controles_1:
+            exibir_miniaturas = st.toggle("Exibir miniaturas", value=True, key="galeria_exibir_miniaturas")
+        total_paginas = max(1, (len(skins_com_imagem) - 1) // THUMBNAIL_PAGE_SIZE + 1)
+        with controles_2:
+            pagina = st.number_input("Pagina", min_value=1, max_value=total_paginas, value=1, step=1)
+        with controles_3:
+            st.caption("Modo seguro: a galeria usa cache local e baixa apenas as miniaturas visiveis da CDN permitida.")
+
+        if not exibir_miniaturas:
+            st.info("Miniaturas desativadas nesta sessao para manter a carteira ainda mais leve.")
+            return
+
+        pagina_int = int(pagina)
+        inicio = (pagina_int - 1) * THUMBNAIL_PAGE_SIZE
+        fim = inicio + THUMBNAIL_PAGE_SIZE
+        pagina_skins = skins_com_imagem[inicio:fim]
+
+        st.caption(f"Exibindo {len(pagina_skins)} de {len(skins_com_imagem)} skin(s) com miniatura.")
+
+        for start in range(0, len(pagina_skins), 4):
+            cols = st.columns(4)
+            for col, skin in zip(cols, pagina_skins[start:start + 4]):
+                with col:
+                    image_path = _thumbnail_path(skin)
+                    if image_path:
+                        st.image(image_path, use_container_width=True)
+                    else:
+                        st.caption("Miniatura indisponivel no modo seguro")
+                    st.caption(skin.nome)
+                    st.caption(f"R$ {skin.preco_atual:.2f} | {_status_label(skin)}")
+
+
+def _thumbnail_path(skin: Skin) -> str | None:
+    if not skin.imagem_url:
+        return None
+    local_path = THUMBNAIL_SERVICE.get_local_path(skin.imagem_url)
+    return str(local_path) if local_path else None
+
+
+def _render_vitrine_compacta(skins: list[Skin], iof_percentual: float) -> None:
+    skins_com_imagem = [skin for skin in skins if skin.imagem_url]
+    if not skins_com_imagem:
+        st.info("Nenhuma miniatura real disponivel na carteira no momento. Va em Inventario para aplicar o catalogo local opcional ou preencher imagens via CSFloat.")
+        return
+
+    st.markdown("### Visao visual")
+    controles_1, controles_2, controles_3 = st.columns([1.15, 1.05, 1.8])
+    with controles_1:
+        exibir_vitrine = st.toggle("Miniaturas na carteira", value=True, key="vitrine_exibir")
+    total_paginas = max(1, (len(skins_com_imagem) - 1) // THUMBNAIL_PAGE_SIZE + 1)
+    with controles_2:
+        pagina = st.number_input(
+            "Pagina visual",
+            min_value=1,
+            max_value=total_paginas,
+            value=1,
+            step=1,
+            key="vitrine_pagina",
+        )
+    with controles_3:
+        st.caption("Exibe apenas os itens visiveis da pagina atual e usa cache local seguro para manter a carteira leve.")
+
+    if not exibir_vitrine:
+        st.info("A vitrine visual esta desativada nesta sessao.")
+        return
+
+    pagina_int = int(pagina)
+    inicio = (pagina_int - 1) * THUMBNAIL_PAGE_SIZE
+    fim = inicio + THUMBNAIL_PAGE_SIZE
+    pagina_skins = skins_com_imagem[inicio:fim]
+
+    st.caption(f"Mostrando {len(pagina_skins)} de {len(skins_com_imagem)} skin(s) com miniatura.")
+
+    for start in range(0, len(pagina_skins), 3):
+        cols = st.columns(3)
+        for col, skin in zip(cols, pagina_skins[start:start + 3]):
+            with col:
+                image_path = _thumbnail_path(skin)
+                status = _status_label(skin)
+                lucro = skin.lucro_com_taxa(iof_percentual)
+                variacao = skin.variacao_pct_com_taxa(iof_percentual) * 100
+
+                with st.container(border=True):
+                    if image_path:
+                        st.image(image_path, use_container_width=True)
+                    else:
+                        st.caption("Miniatura indisponivel no modo seguro")
+                    st.markdown(f"**{skin.nome}**")
+                    st.caption(f"{skin.tipo} | {skin.desgaste}")
+                    st.caption(f"Compra: R$ {skin.preco_compra:.2f} | Atual: R$ {skin.preco_atual:.2f}")
+                    st.caption(f"Lucro: R$ {lucro:.2f} | Variacao: {variacao:+.1f}%")
+                    st.caption(f"Status: {status}")
+
+
+def _hero(data: AppData) -> None:
+    pendentes = sum(1 for skin in data.skins if skin.preco_atual <= 0)
+    antigos = sum(1 for skin in data.skins if skin.preco_atual > 0 and _is_stale(skin))
+
     st.markdown(
         f"""
         <div style="
-            padding: 1.1rem 1.2rem;
+            padding: 1rem 1.1rem;
+            margin-top: 0.35rem;
             margin-bottom: 1rem;
             border-radius: 18px;
             background: linear-gradient(135deg, rgba(32,49,66,0.96), rgba(59,85,110,0.92));
             color: #f7fbff;
-            box-shadow: 0 22px 42px rgba(32,49,66,0.18);
+            box-shadow: 0 18px 36px rgba(32,49,66,0.16);
         ">
-            <div style="font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.74;">Carteira</div>
-            <div style="font-size: 1.85rem; font-weight: 800; margin-top: 0.2rem;">Visao consolidada do inventario</div>
-            <div style="font-size: 0.98rem; opacity: 0.82; margin-top: 0.35rem;">
-                A tabela abaixo combina valor atual, metodo da estimativa e nivel de confianca. IOF aplicado na exibicao: {iof_percentual:.2f}%.
+            <div style="font-size: 0.84rem; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.74;">Carteira</div>
+            <div style="font-size: 1.72rem; font-weight: 800; margin-top: 0.18rem;">Visao consolidada do inventario</div>
+            <div style="font-size: 0.95rem; opacity: 0.82; margin-top: 0.28rem;">
+                IOF aplicado na exibicao: {data.config.iof_percentual:.2f}% | Pendentes: {pendentes} | Antigos: {antigos}
             </div>
         </div>
         """,
@@ -97,7 +230,7 @@ def _metricas_resumo(skins: list[Skin], iof_percentual: float) -> None:
     c4.metric("Lucro / Prejuizo", f"R$ {lucro_total:,.2f}", delta=f"{variacao:+.1f}%")
 
 
-def _tabela_skins(skins: list[Skin], iof_percentual: float) -> None:
+def _render_tabela(skins: list[Skin], iof_percentual: float) -> None:
     if not skins:
         st.info("Nenhuma skin corresponde aos filtros.")
         return
@@ -109,9 +242,8 @@ def _tabela_skins(skins: list[Skin], iof_percentual: float) -> None:
                 "Nome": skin.nome,
                 "Tipo": skin.tipo,
                 "Desgaste": skin.desgaste,
-                "StatTrak": skin.stattrak,
                 "Plataforma": skin.plataforma,
-                "Status": _badge_status(skin.status_preco()),
+                "Status": _badge_status(_status_label(skin)),
                 "Fonte": skin.preco_provider or "-",
                 "Metodo": skin.preco_metodo or "-",
                 "Amostra": skin.preco_amostra if skin.preco_amostra else "-",
@@ -144,13 +276,14 @@ def _tabela_skins(skins: list[Skin], iof_percentual: float) -> None:
         return ""
 
     def _color_status(val):
-        if "Ao vivo" in str(val):
+        text = str(val)
+        if "Ao vivo" in text:
             return "color: #067647; font-weight: 700"
-        if "Cache expirado" in str(val):
+        if "Cache expirado" in text:
             return "color: #b54708; font-weight: 700"
-        if "Cache" in str(val):
+        if "Cache" in text:
             return "color: #175cd3; font-weight: 700"
-        if "Sem preco" in str(val):
+        if "Sem preco" in text:
             return "color: #b42318; font-weight: 700"
         return ""
 
@@ -183,15 +316,29 @@ def _tabela_skins(skins: list[Skin], iof_percentual: float) -> None:
     st.dataframe(styled, use_container_width=True, hide_index=True, height=640)
 
 
+def _filtrar_para_atualizacao(skins: list[Skin], update_mode: str) -> list[Skin]:
+    if update_mode == "all":
+        return skins
+    if update_mode == "pending_only":
+        return [skin for skin in skins if skin.preco_atual <= 0]
+    return [skin for skin in skins if skin.preco_atual <= 0 or _is_stale(skin)]
+
+
 def _atualizar_precos(
     data: AppData,
     provider_escolhido: str,
+    update_mode: str,
     considerar_float: bool = False,
     margem_float: float = 0.01,
     considerar_pattern: bool = False,
 ) -> None:
     if not data.skins:
         st.warning("Nenhuma skin para atualizar.")
+        return
+
+    skins_alvo = _filtrar_para_atualizacao(data.skins, update_mode)
+    if not skins_alvo:
+        st.info("Nenhuma skin precisa ser atualizada neste modo.")
         return
 
     config_busca = data.config.model_copy(update={"provider_preferido": provider_escolhido})
@@ -206,14 +353,14 @@ def _atualizar_precos(
         st.error("Nenhum provider de preco disponivel. Configure uma API key em Configuracoes.")
         return
 
-    st.info("Buscando precos com cache persistente e fallback seguro.")
+    st.info(f"Atualizando {len(skins_alvo)} item(ns) com cache persistente e fallback seguro.")
     progress = st.progress(0, text="Iniciando...")
     erros = []
 
     def on_progress(atual: int, total: int, nome: str) -> None:
         progress.progress(atual / total, text=f"({atual}/{total}) {nome}")
 
-    resultados = svc.buscar_precos_lote(data.skins, on_progress=on_progress)
+    resultados = svc.buscar_precos_lote(skins_alvo, on_progress=on_progress)
 
     atualizados = 0
     for skin in data.skins:
@@ -301,11 +448,14 @@ def _secao_remover(data: AppData) -> None:
 
 def render() -> None:
     data = carregar_dados()
+    if hydrate_app_data_from_catalog(data):
+        salvar_dados(data)
+        data = carregar_dados()
 
-    _hero(data.config.iof_percentual)
+    _hero(data)
 
-    col1, col2, col3, col4, col5 = st.columns([2.1, 1.2, 1.2, 1.5, 1.4])
-    with col1:
+    row1_col1, row1_col2, row1_col3 = st.columns([1.8, 1.2, 1.2])
+    with row1_col1:
         provider_escolhido = st.selectbox(
             "Provider base",
             options=PRICE_PROVIDERS,
@@ -314,21 +464,28 @@ def render() -> None:
             else 0,
             format_func=lambda x: PROVIDER_LABELS.get(x, x),
         )
-    with col2:
+    with row1_col2:
         considerar_float = st.toggle("Considerar float", value=False)
-    with col3:
+    with row1_col3:
         considerar_pattern = st.toggle("Considerar pattern", value=False)
-    with col4:
+
+    row2_col1, row2_col2, row2_col3 = st.columns([1.4, 1.4, 1.1])
+    with row2_col1:
+        update_mode_label = st.selectbox("Modo de atualizacao", options=list(UPDATE_MODES.keys()))
+        update_mode = UPDATE_MODES[update_mode_label]
+    with row2_col2:
         margem_float = (
             st.number_input("Margem float", min_value=0.001, max_value=0.5, value=0.01, step=0.005, format="%.3f")
             if considerar_float
             else 0.01
         )
-    with col5:
+    with row2_col3:
         st.markdown("<div style='height: 30px'></div>", unsafe_allow_html=True)
         if st.button("Atualizar precos", type="primary", use_container_width=True):
-            _atualizar_precos(data, provider_escolhido, considerar_float, margem_float, considerar_pattern)
+            _atualizar_precos(data, provider_escolhido, update_mode, considerar_float, margem_float, considerar_pattern)
             data = carregar_dados()
+
+    st.caption("Atualizacao segura: por padrao, o app prioriza itens pendentes e antigos para reduzir chamadas desnecessarias.")
 
     st.divider()
     _metricas_resumo(data.skins, data.config.iof_percentual)
@@ -354,11 +511,14 @@ def render() -> None:
                 for s in data.skins
                 if s.tipo in tipo_filtro
                 and s.plataforma in plat_filtro
-                and s.status_preco() in status_filtro
+                and _status_label(s) in status_filtro
                 and (not confianca_filtro or s.preco_confianca in confianca_filtro or not s.preco_confianca)
             ]
 
-        _tabela_skins(filtradas, data.config.iof_percentual)
+        _render_vitrine_compacta(filtradas, data.config.iof_percentual)
+        st.divider()
+        _render_tabela(filtradas, data.config.iof_percentual)
+        _render_galeria(filtradas)
 
     _secao_editar(data)
     _secao_remover(data)

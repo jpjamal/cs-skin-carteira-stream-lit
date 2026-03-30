@@ -29,7 +29,9 @@ def _load_json(path) -> dict:
 
 def _save_json(path, data: dict) -> None:
     _ensure_parent_files()
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    temp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    temp_path.replace(path)
 
 
 def build_price_cache_key(
@@ -90,6 +92,7 @@ def set_cached_price(
     metodo: str = "",
     amostra: int = 0,
     confianca: str = "",
+    imagem_url: str = "",
 ) -> PriceCacheEntry:
     entries = load_price_cache()
     entry = PriceCacheEntry(
@@ -100,6 +103,7 @@ def set_cached_price(
         metodo=metodo,
         amostra=amostra,
         confianca=confianca,
+        imagem_url=imagem_url,
         ttl_seconds=ttl_seconds,
         atualizado_em_ts=time.time(),
     )

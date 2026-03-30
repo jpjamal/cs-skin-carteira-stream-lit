@@ -5,7 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from app.config import PRICE_PROVIDERS
-from app.models import ApiConfig
+from app.models import AppData
 from app.services.runtime_state import get_provider_state, load_price_cache
 from app.services.storage import carregar_dados, salvar_dados
 
@@ -125,7 +125,7 @@ def render() -> None:
         st.metric("Skins cadastradas", len(data.skins))
 
     with col_b:
-        total = sum(s.total_com_iof for s in data.skins)
+        total = sum(s.total_com_iof_com_taxa(data.config.iof_percentual) for s in data.skins)
         st.metric("Investimento total", f"R$ {total:,.2f}")
 
     st.caption(f"Entradas no cache persistente: {len(load_price_cache())}")
@@ -133,8 +133,6 @@ def render() -> None:
     if st.button("Limpar TODOS os dados", type="secondary"):
         st.warning("Tem certeza? Esta acao e irreversivel.")
         if st.button("Confirmar exclusao total", type="secondary"):
-            from app.models import AppData
-
             salvar_dados(AppData(config=cfg))
             st.success("Todos os dados foram removidos.")
             st.rerun()

@@ -99,6 +99,7 @@ class PriceService:
                     amostra=cached.amostra,
                     confianca=cached.confianca,
                     atualizado_em=datetime.fromtimestamp(cached.atualizado_em_ts).isoformat(),
+                    imagem_url=cached.imagem_url,
                 )
 
             stale_cache = get_cached_price(cache_key, allow_stale=True)
@@ -116,6 +117,7 @@ class PriceService:
                             amostra=stale_cache.amostra,
                             confianca=stale_cache.confianca,
                             atualizado_em=datetime.fromtimestamp(stale_cache.atualizado_em_ts).isoformat(),
+                            imagem_url=stale_cache.imagem_url,
                         ),
                     )
                 )
@@ -210,6 +212,7 @@ class PriceService:
                 metodo=result.metodo,
                 amostra=result.amostra,
                 confianca=result.confianca,
+                imagem_url=result.imagem_url,
             )
             record_provider_success(provider_name)
             return result
