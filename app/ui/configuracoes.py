@@ -12,7 +12,7 @@ from app.services.storage import carregar_dados, salvar_dados
 
 def render() -> None:
     """Renderiza a pagina de configuracoes."""
-    st.header("Configuracoes")
+    st.header("Preferencias")
 
     data = carregar_dados()
     cfg = data.config

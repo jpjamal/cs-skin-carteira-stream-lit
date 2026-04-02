@@ -159,6 +159,7 @@ class ByMykelCatalogClient:
         self._timeout_seconds = timeout_seconds
         self._session = session or requests.Session()
         self._session.headers.setdefault("User-Agent", "CS2-Skin-Tracker/1.0")
+        self._source_cache: dict[tuple[str, bool], list[dict[str, Any]]] = {}
 
     def load_catalog_items(
         self,
@@ -181,19 +182,29 @@ class ByMykelCatalogClient:
         if source_file not in SOURCE_FILES:
             raise ValueError(f"Arquivo de catalogo nao suportado: {source_file}")
 
+        cache_key = (source_file, bool(force_refresh))
+        cached = self._source_cache.get(cache_key)
+        if cached is not None:
+            return [dict(item) for item in cached]
+
         if self._local_api_root:
-            return self._read_local_source(source_file)
+            payload = self._read_local_source(source_file)
+            self._source_cache[cache_key] = payload
+            return [dict(item) for item in payload]
 
         cache_file = self._cache_dir / self._language / source_file
         if cache_file.exists() and not force_refresh:
-            return json.loads(cache_file.read_text(encoding="utf-8"))
+            payload = json.loads(cache_file.read_text(encoding="utf-8"))
+            self._source_cache[cache_key] = payload
+            return [dict(item) for item in payload]
 
         payload = self._download_source(source_file)
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         temp_file = cache_file.with_suffix(cache_file.suffix + ".tmp")
         temp_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         temp_file.replace(cache_file)
-        return payload
+        self._source_cache[cache_key] = payload
+        return [dict(item) for item in payload]
 
     def _read_local_source(self, source_file: str) -> list[dict[str, Any]]:
         if not self._local_api_root:

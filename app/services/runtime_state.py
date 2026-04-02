@@ -5,33 +5,54 @@ from __future__ import annotations
 import json
 import logging
 import time
+from pathlib import Path
 
 from app.config import PRICE_CACHE_FILE, PROVIDER_STATE_FILE
 from app.models import PriceCacheEntry, ProviderState
 
 logger = logging.getLogger(__name__)
 
+_JSON_CACHE: dict[Path, tuple[float, dict]] = {}
+
 
 def _ensure_parent_files() -> None:
     PRICE_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
-def _load_json(path) -> dict:
+def _load_json(path: Path) -> dict:
     _ensure_parent_files()
     if not path.exists():
+        _JSON_CACHE[path] = (0.0, {})
         return {}
+
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        mtime = path.stat().st_mtime
+    except OSError:
+        logger.exception("Erro ao inspecionar arquivo auxiliar %s", path)
+        return {}
+
+    cached = _JSON_CACHE.get(path)
+    if cached and cached[0] == mtime:
+        return dict(cached[1])
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        _JSON_CACHE[path] = (mtime, data)
+        return dict(data)
     except Exception:
         logger.exception("Erro ao carregar arquivo auxiliar %s", path)
         return {}
 
 
-def _save_json(path, data: dict) -> None:
+def _save_json(path: Path, data: dict) -> None:
     _ensure_parent_files()
     temp_path = path.with_suffix(path.suffix + ".tmp")
     temp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     temp_path.replace(path)
+    try:
+        _JSON_CACHE[path] = (path.stat().st_mtime, dict(data))
+    except OSError:
+        _JSON_CACHE.pop(path, None)
 
 
 def build_price_cache_key(
