@@ -138,14 +138,14 @@ def _render_vitrine_compacta(skins: list[Skin], iof_percentual: float) -> None:
         st.info("Nenhuma miniatura real disponivel na carteira no momento. Va em Inventario para aplicar o catalogo local opcional ou preencher imagens via CSFloat.")
         return
 
-    st.markdown("### Visao visual")
+    st.markdown("### Miniaturas da carteira")
     controles_1, controles_2, controles_3 = st.columns([1.15, 1.05, 1.8])
     with controles_1:
-        exibir_vitrine = st.toggle("Miniaturas na carteira", value=True, key="vitrine_exibir")
+        exibir_vitrine = st.toggle("Exibir miniaturas", value=True, key="vitrine_exibir")
     total_paginas = max(1, (len(skins_com_imagem) - 1) // THUMBNAIL_PAGE_SIZE + 1)
     with controles_2:
         pagina = st.number_input(
-            "Pagina visual",
+            "Pagina",
             min_value=1,
             max_value=total_paginas,
             value=1,
@@ -156,7 +156,7 @@ def _render_vitrine_compacta(skins: list[Skin], iof_percentual: float) -> None:
         st.caption("Exibe apenas os itens visiveis da pagina atual e usa cache local seguro para manter a carteira leve.")
 
     if not exibir_vitrine:
-        st.info("A vitrine visual esta desativada nesta sessao.")
+        st.info("A galeria de miniaturas esta desativada nesta sessao.")
         return
 
     pagina_int = int(pagina)
@@ -171,7 +171,6 @@ def _render_vitrine_compacta(skins: list[Skin], iof_percentual: float) -> None:
         for col, skin in zip(cols, pagina_skins[start:start + 4]):
             with col:
                 image_path = _thumbnail_path(skin)
-                status = _status_label(skin)
                 lucro = skin.lucro_com_taxa(iof_percentual)
                 variacao = skin.variacao_pct_com_taxa(iof_percentual) * 100
 
@@ -182,9 +181,33 @@ def _render_vitrine_compacta(skins: list[Skin], iof_percentual: float) -> None:
                         st.caption("Miniatura indisponivel no modo seguro")
                     st.markdown(f"**{skin.nome}**")
                     st.caption(f"{skin.tipo} | {skin.desgaste}")
-                    st.caption(f"Compra: R$ {skin.preco_compra:.2f} | Atual: R$ {skin.preco_atual:.2f}")
-                    st.caption(f"Lucro: R$ {lucro:.2f} | Variacao: {variacao:+.1f}%")
-                    st.caption(f"Status: {status}")
+                    st.markdown(
+                        f"""
+                        <div style="margin-top: 0.35rem;">
+                            <div style="display: flex; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.25rem;">
+                                <div>
+                                    <div style="font-size: 0.72rem; color: #6b7b8c; text-transform: uppercase; letter-spacing: 0.04em;">Compra</div>
+                                    <div style="font-size: 0.95rem; font-weight: 700; color: #31475d;">R$ {skin.preco_compra:.2f}</div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-size: 0.72rem; color: #6b7b8c; text-transform: uppercase; letter-spacing: 0.04em;">Atual</div>
+                                    <div style="font-size: 1.02rem; font-weight: 800; color: #13212f;">R$ {skin.preco_atual:.2f}</div>
+                                </div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.45rem;">
+                                <div>
+                                    <div style="font-size: 0.72rem; color: #6b7b8c; text-transform: uppercase; letter-spacing: 0.04em;">Lucro</div>
+                                    <div style="font-size: 0.92rem; font-weight: 700; color: {'#067647' if lucro >= 0 else '#b42318'};">R$ {lucro:.2f}</div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-size: 0.72rem; color: #6b7b8c; text-transform: uppercase; letter-spacing: 0.04em;">Variacao</div>
+                                    <div style="font-size: 0.92rem; font-weight: 700; color: {'#067647' if variacao >= 0 else '#b42318'};">{variacao:+.1f}%</div>
+                                </div>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
 
 def _hero(data: AppData) -> None:
@@ -203,7 +226,7 @@ def _hero(data: AppData) -> None:
             box-shadow: 0 18px 36px rgba(32,49,66,0.16);
         ">
             <div style="font-size: 0.84rem; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.74;">Carteira</div>
-            <div style="font-size: 1.72rem; font-weight: 800; margin-top: 0.18rem;">Visao consolidada do inventario</div>
+            <div style="font-size: 1.72rem; font-weight: 800; margin-top: 0.18rem;">Resumo da carteira</div>
             <div style="font-size: 0.95rem; opacity: 0.82; margin-top: 0.28rem;">
                 IOF aplicado na exibicao: {data.config.iof_percentual:.2f}% | Pendentes: {pendentes} | Antigos: {antigos}
             </div>
@@ -222,12 +245,24 @@ def _metricas_resumo(skins: list[Skin], iof_percentual: float) -> None:
     valor_atual = sum(s.preco_atual for s in skins)
     lucro_total = valor_atual - total_investido
     variacao = (lucro_total / total_investido * 100) if total_investido > 0 else 0.0
+    media_compra = total_investido / len(skins) if skins else 0.0
+    skins_com_preco = [s for s in skins if s.preco_atual > 0]
+    media_atual = (
+        sum(s.preco_atual for s in skins_com_preco) / len(skins_com_preco)
+        if skins_com_preco
+        else 0.0
+    )
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Itens", len(skins))
     c2.metric("Investido", f"R$ {total_investido:,.2f}")
     c3.metric("Valor Atual", f"R$ {valor_atual:,.2f}")
     c4.metric("Lucro / Prejuizo", f"R$ {lucro_total:,.2f}", delta=f"{variacao:+.1f}%")
+    c5.metric("Ticket Medio", f"R$ {media_compra:,.2f}")
+    c6.metric("Media Atual", f"R$ {media_atual:,.2f}")
+
+    if not skins_com_preco:
+        st.caption("Preco medio atual fica disponivel assim que pelo menos um item tiver preco buscado.")
 
 
 def _render_tabela(skins: list[Skin], iof_percentual: float) -> None:
@@ -450,14 +485,13 @@ def render() -> None:
     data = carregar_dados()
     if hydrate_app_data_from_catalog(data):
         salvar_dados(data)
-        data = carregar_dados()
 
     _hero(data)
 
     row1_col1, row1_col2, row1_col3 = st.columns([1.8, 1.2, 1.2])
     with row1_col1:
         provider_escolhido = st.selectbox(
-            "Provider base",
+            "Fonte principal de preco",
             options=PRICE_PROVIDERS,
             index=PRICE_PROVIDERS.index(data.config.provider_preferido)
             if data.config.provider_preferido in PRICE_PROVIDERS
@@ -471,7 +505,7 @@ def render() -> None:
 
     row2_col1, row2_col2, row2_col3 = st.columns([1.4, 1.4, 1.1])
     with row2_col1:
-        update_mode_label = st.selectbox("Modo de atualizacao", options=list(UPDATE_MODES.keys()))
+        update_mode_label = st.selectbox("Escopo da atualizacao", options=list(UPDATE_MODES.keys()))
         update_mode = UPDATE_MODES[update_mode_label]
     with row2_col2:
         margem_float = (
@@ -481,15 +515,11 @@ def render() -> None:
         )
     with row2_col3:
         st.markdown("<div style='height: 30px'></div>", unsafe_allow_html=True)
-        if st.button("Atualizar precos", type="primary", use_container_width=True):
+        if st.button("Atualizar valores", type="primary", use_container_width=True):
             _atualizar_precos(data, provider_escolhido, update_mode, considerar_float, margem_float, considerar_pattern)
             data = carregar_dados()
 
     st.caption("Atualizacao segura: por padrao, o app prioriza itens pendentes e antigos para reduzir chamadas desnecessarias.")
-
-    st.divider()
-    _metricas_resumo(data.skins, data.config.iof_percentual)
-    st.divider()
 
     if data.skins:
         with st.expander("Filtros da carteira", expanded=False):
@@ -499,12 +529,12 @@ def render() -> None:
             plataformas = sorted({s.plataforma for s in data.skins if s.plataforma})
             plat_filtro = fc2.multiselect("Plataforma", plataformas, default=plataformas)
             status_filtro = fc3.multiselect(
-                "Status do preco",
+                "Status",
                 ["Ao vivo", "Cache", "Cache expirado", "Sem preco"],
                 default=["Ao vivo", "Cache", "Cache expirado", "Sem preco"],
             )
             confiancas = sorted({s.preco_confianca for s in data.skins if s.preco_confianca})
-            confianca_filtro = fc4.multiselect("Confianca", confiancas, default=confiancas or [])
+            confianca_filtro = fc4.multiselect("Qualidade", confiancas, default=confiancas or [])
 
             filtradas = [
                 s
@@ -515,10 +545,18 @@ def render() -> None:
                 and (not confianca_filtro or s.preco_confianca in confianca_filtro or not s.preco_confianca)
             ]
 
+        st.divider()
+        _metricas_resumo(filtradas, data.config.iof_percentual)
+        st.caption("As medias seguem os filtros aplicados na carteira.")
+        st.divider()
+
         _render_vitrine_compacta(filtradas, data.config.iof_percentual)
         st.divider()
         _render_tabela(filtradas, data.config.iof_percentual)
         _render_galeria(filtradas)
+    else:
+        st.divider()
+        _metricas_resumo(data.skins, data.config.iof_percentual)
 
     _secao_editar(data)
     _secao_remover(data)

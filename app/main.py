@@ -32,32 +32,50 @@ html, body, [class*="css"] {
 }
 
 .block-container {
-    padding-top: 1.8rem;
-    padding-bottom: 2rem;
-    max-width: 1480px;
+    padding-top: 1rem;
+    padding-bottom: 1.25rem;
+    padding-left: 1.1rem;
+    padding-right: 1.1rem;
+    max-width: 100%;
 }
 
 [data-testid="stMetric"] {
     background: rgba(255, 255, 255, 0.84);
     border: 1px solid rgba(44, 62, 80, 0.08);
-    border-radius: 18px;
-    padding: 1rem 1.1rem;
-    box-shadow: 0 14px 34px rgba(44, 62, 80, 0.08);
+    border-radius: 14px;
+    padding: 0.6rem 0.8rem;
+    box-shadow: 0 10px 24px rgba(44, 62, 80, 0.07);
+    min-height: 104px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 
 [data-testid="stMetricLabel"] {
     font-weight: 700;
     color: #53667b;
+    font-size: 0.88rem;
+    min-height: 2.1rem;
+    display: flex;
+    align-items: flex-start;
 }
 
 [data-testid="stMetricValue"] {
-    font-size: 1.7rem;
+    font-size: 1.12rem;
     font-weight: 800;
     color: #13212f;
+    line-height: 1.15;
+    min-height: 2rem;
+    display: flex;
+    align-items: center;
 }
 
 [data-testid="stMetricDelta"] {
     font-weight: 700;
+    font-size: 0.9rem;
+    min-height: 1.2rem;
+    display: flex;
+    align-items: center;
 }
 
 .stButton > button {
@@ -139,8 +157,31 @@ html, body, [class*="css"] {
     background: linear-gradient(180deg, #203142 0%, #31475d 100%);
 }
 
+[data-testid="stSidebar"][aria-expanded="true"] {
+    min-width: 15rem;
+    max-width: 15rem;
+}
+
 [data-testid="stSidebar"] * {
     color: #f4f7fb !important;
+}
+
+[data-testid="stSidebar"] .stRadio label,
+[data-testid="stSidebar"] .stCaption,
+[data-testid="stSidebar"] p {
+    font-size: 0.92rem !important;
+}
+
+[data-testid="stSidebar"] h1 {
+    font-size: 1.2rem !important;
+    margin-bottom: 0.25rem !important;
+}
+
+@media (max-width: 1100px) {
+    [data-testid="stSidebar"][aria-expanded="true"] {
+        min-width: 13rem;
+        max-width: 13rem;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -173,7 +214,7 @@ def _sidebar_nav() -> str:
     """Renderiza o menu lateral e retorna a pagina selecionada."""
     with st.sidebar:
         st.title(f"{APP_ICON} {APP_NAME}")
-        st.caption("Carteira visual para acompanhar preco, lucro e qualidade da estimativa.")
+        st.caption("Acompanhe precos, lucro e a qualidade das estimativas.")
         st.divider()
 
         pages = {

@@ -62,7 +62,7 @@ def _hero(data: AppData) -> None:
             box-shadow: 0 18px 36px rgba(32,49,66,0.16);
         ">
             <div style="font-size: 0.84rem; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.74;">Inventario</div>
-            <div style="font-size: 1.72rem; font-weight: 800; margin-top: 0.18rem;">Grade visual de skins</div>
+            <div style="font-size: 1.72rem; font-weight: 800; margin-top: 0.18rem;">Galeria do inventario</div>
             <div style="font-size: 0.95rem; opacity: 0.82; margin-top: 0.28rem;">
                 Total: {len(data.skins)} | Com miniatura: {com_miniatura} | Sem miniatura: {pendentes}
             </div>
@@ -130,7 +130,7 @@ def _render_grid(skins: list[Skin], iof_percentual: float) -> None:
         st.info("Nenhuma skin corresponde aos filtros.")
         return
 
-    mostrar_sem_foto = st.toggle("Incluir skins sem foto", value=True, key="inventario_mostrar_sem_foto")
+    mostrar_sem_foto = st.toggle("Mostrar itens sem foto", value=True, key="inventario_mostrar_sem_foto")
     st.caption("A grade usa cache local para fotos validas e fallback visual limpo para itens ainda sem miniatura.")
 
     skins_filtradas = skins if mostrar_sem_foto else [skin for skin in skins if skin.imagem_url]
@@ -140,7 +140,7 @@ def _render_grid(skins: list[Skin], iof_percentual: float) -> None:
 
     total_paginas = max(1, (len(skins_filtradas) - 1) // THUMBNAIL_PAGE_SIZE + 1)
     pagina = st.number_input(
-        "Pagina do inventario",
+        "Pagina",
         min_value=1,
         max_value=total_paginas,
         value=1,
@@ -231,18 +231,17 @@ def render() -> None:
     data = carregar_dados()
     if hydrate_app_data_from_catalog(data):
         salvar_dados(data)
-        data = carregar_dados()
 
     _hero(data)
 
     controles_1, controles_2, controles_3 = st.columns([1.6, 1.2, 1.2])
-    busca = controles_1.text_input("Buscar skin", placeholder="Nome, tipo, plataforma ou market hash")
+    busca = controles_1.text_input("Buscar item", placeholder="Nome, tipo, plataforma ou market hash")
     filtro_status = controles_2.selectbox("Status", ["Todos", "Ao vivo", "Cache", "Cache expirado", "Sem preco"])
     apenas_stale = controles_3.toggle("Somente antigas", value=False)
 
     acao_1, acao_2 = st.columns([1.3, 2.7])
     with acao_1:
-        if st.button("Sincronizar catalogo", type="primary", use_container_width=True):
+        if st.button("Atualizar catalogo local", type="primary", use_container_width=True):
             _sync_catalog()
             data = carregar_dados()
     with acao_2:

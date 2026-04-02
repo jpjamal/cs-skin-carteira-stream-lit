@@ -50,6 +50,7 @@ class ThumbnailService:
         self._error_cooldown_seconds = error_cooldown_seconds
         self._session = requests.Session()
         self._session.headers.update({"User-Agent": "CS2-Skin-Tracker/1.0"})
+        self._state_cache: dict[str, dict] | None = None
 
     def get_local_path(self, image_url: str, refresh: bool = False) -> Path | None:
         """Retorna o caminho local da miniatura, baixando quando necessario."""
@@ -162,19 +163,26 @@ class ThumbnailService:
         self._state_file.parent.mkdir(parents=True, exist_ok=True)
 
     def _load_state(self) -> dict[str, dict]:
+        if self._state_cache is not None:
+            return dict(self._state_cache)
+
         self._ensure_dirs()
         if not self._state_file.exists():
+            self._state_cache = {}
             return {}
         try:
-            return json.loads(self._state_file.read_text(encoding="utf-8"))
+            self._state_cache = json.loads(self._state_file.read_text(encoding="utf-8"))
+            return dict(self._state_cache)
         except Exception:
             logger.info("Estado de miniaturas invalido; recriando arquivo")
+            self._state_cache = {}
             return {}
 
     def _save_state(self, data: dict[str, dict]) -> None:
         temp_file = self._state_file.with_suffix(self._state_file.suffix + ".tmp")
         temp_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
         temp_file.replace(self._state_file)
+        self._state_cache = dict(data)
 
     def _should_retry(self, image_url: str) -> bool:
         state = self._load_state()
