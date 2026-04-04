@@ -5,13 +5,22 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from app.models import AppData, Skin
+from app.models import ApiConfig, AppData, AssetPosition, ComparisonSnapshot, MarketInstrument, MarketIntelligenceRecord, Skin, WeeklyPricePoint
 from app.services import catalog_service, runtime_state, storage
 from app.services.bymykel_catalog import ByMykelCatalogClient, infer_required_sources
 from app.services import catalog_sync
+from app.services.comparison_service import ComparisonService, build_projection
 from app.services.catalog_sync import sync_catalog_snapshot
 from app.services.price_providers.csfloat import CSFloatProvider
 from app.services.thumbnail_service import ThumbnailService
+from app.ui.comparador import (
+    _build_asset_same_capital_view,
+    _asset_display_value,
+    _effective_skin_reference,
+    normalize_weekly_points,
+    summarize_skin_history,
+    summarize_weekly_points,
+)
 
 
 class SkinModelTests(unittest.TestCase):
@@ -75,6 +84,196 @@ class StorageBackupTests(unittest.TestCase):
                 storage.DATA_FILE = original_data_file
                 storage.DATA_FILE_BACKUP = original_backup_file
                 storage.DATA_DIR = original_data_dir
+
+    def test_market_intelligence_is_saved_locally(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            original_market_file = storage.MARKET_INTELLIGENCE_FILE
+            try:
+                storage.MARKET_INTELLIGENCE_FILE = temp_path / "market_intelligence.json"
+                record = MarketIntelligenceRecord(
+                    skin_id="skin123",
+                    skin_name="AK-47 | Slate",
+                    snapshot=ComparisonSnapshot(
+                        skin_id="skin123",
+                        skin_name="AK-47 | Slate",
+                        market_hash_name="AK-47 | Slate (Factory New)",
+                        benchmark_price_brl=155.0,
+                    ),
+                )
+                storage.salvar_market_snapshot(record)
+
+                loaded = storage.obter_market_snapshot("skin123")
+                self.assertIsNotNone(loaded)
+                self.assertEqual(loaded.snapshot.benchmark_price_brl, 155.0)
+                self.assertEqual(len(loaded.history), 1)
+            finally:
+                storage.MARKET_INTELLIGENCE_FILE = original_market_file
+
+    def test_asset_position_is_saved_locally(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            original_data_file = storage.DATA_FILE
+            original_backup_file = storage.DATA_FILE_BACKUP
+            original_data_dir = storage.DATA_DIR
+            try:
+                storage.DATA_DIR = temp_path
+                storage.DATA_FILE = temp_path / "skins.json"
+                storage.DATA_FILE_BACKUP = temp_path / "skins.backup.json"
+                storage.salvar_dados(AppData())
+
+                storage.adicionar_posicao_ativo(
+                    AssetPosition(
+                        instrument_id="asset_seed_googl",
+                        display_name="Alphabet Inc. Class A",
+                        symbol="GOOGL",
+                        quantity=3,
+                        average_cost_brl=920.0,
+                    )
+                )
+
+                loaded = storage.carregar_dados()
+                self.assertEqual(len(loaded.asset_positions), 1)
+                self.assertEqual(loaded.asset_positions[0].symbol, "GOOGL")
+                self.assertEqual(loaded.asset_positions[0].total_cost_brl, 2760.0)
+            finally:
+                storage.DATA_FILE = original_data_file
+                storage.DATA_FILE_BACKUP = original_backup_file
+                storage.DATA_DIR = original_data_dir
+
+
+class ComparisonDashboardHelpersTests(unittest.TestCase):
+    def test_effective_skin_reference_falls_back_to_asset_price(self) -> None:
+        snapshot = ComparisonSnapshot(
+            skin_id="skin_1",
+            skin_name="AK-47 | Slate",
+            market_hash_name="AK-47 | Slate (Factory New)",
+            asset_price_brl=87.37,
+        )
+        skin = Skin(nome="AK-47 | Slate", preco_compra=40.0)
+
+        value, label = _effective_skin_reference(snapshot, skin)
+        self.assertEqual(value, 87.37)
+        self.assertEqual(label, "Preco atual da skin")
+
+    def test_asset_display_value_uses_catalog_when_no_series(self) -> None:
+        asset = MarketInstrument(
+            id="asset_seed_aapl",
+            kind="stock",
+            display_name="Apple Inc.",
+            symbol="AAPL",
+            currency="USD",
+        )
+
+        value, delta = _asset_display_value(asset, {"summary": {"latest": None, "count": 0}})
+        self.assertEqual(value, "-")
+        self.assertIsNone(delta)
+
+    def test_build_asset_same_capital_view_uses_brl_cache(self) -> None:
+        summary = {
+            "first": WeeklyPricePoint(
+                instrument_id="asset_seed_googl",
+                week_end_date="2026-03-14",
+                close_native=172.8,
+                fx_rate_to_brl=5.08,
+                close_brl=877.82,
+                provider="seed_local",
+            ),
+            "latest": WeeklyPricePoint(
+                instrument_id="asset_seed_googl",
+                week_end_date="2026-04-04",
+                close_native=180.2,
+                fx_rate_to_brl=5.09,
+                close_brl=917.22,
+                provider="seed_local",
+            ),
+        }
+
+        result = _build_asset_same_capital_view({"summary": summary}, base_capital_brl=1000.0)
+        self.assertGreater(result["units"], 1.0)
+        self.assertGreater(result["current_value_brl"], 1000.0)
+        self.assertGreater(result["pnl_pct"], 0.0)
+
+    def test_normalize_weekly_points_keeps_latest_point_per_week(self) -> None:
+        points = [
+            WeeklyPricePoint(
+                instrument_id="asset_1",
+                week_end_date="2026-03-21",
+                close_native=100.0,
+                close_brl=100.0,
+                provider="twelvedata",
+            ),
+            WeeklyPricePoint(
+                instrument_id="asset_1",
+                week_end_date="2026-03-21",
+                close_native=101.0,
+                close_brl=101.0,
+                provider="alphavantage",
+            ),
+            WeeklyPricePoint(
+                instrument_id="asset_1",
+                week_end_date="2026-03-28",
+                close_native=110.0,
+                close_brl=110.0,
+                provider="twelvedata",
+            ),
+        ]
+
+        normalized = normalize_weekly_points(points)
+        self.assertEqual(len(normalized), 2)
+        self.assertEqual(normalized[0].close_native, 101.0)
+        self.assertEqual(normalized[1].week_end_date, "2026-03-28")
+
+    def test_summarize_weekly_points_calculates_delta(self) -> None:
+        points = [
+            WeeklyPricePoint(
+                instrument_id="asset_1",
+                week_end_date="2026-03-21",
+                close_native=100.0,
+                close_brl=100.0,
+                provider="twelvedata",
+            ),
+            WeeklyPricePoint(
+                instrument_id="asset_1",
+                week_end_date="2026-03-28",
+                close_native=112.0,
+                close_brl=112.0,
+                provider="twelvedata",
+            ),
+        ]
+
+        summary = summarize_weekly_points(points)
+        self.assertEqual(summary["count"], 2)
+        self.assertEqual(summary["delta_value"], 12.0)
+        self.assertAlmostEqual(summary["delta_pct"], 0.12)
+
+    def test_summarize_skin_history_uses_local_snapshots(self) -> None:
+        current = ComparisonSnapshot(
+            skin_id="skin_1",
+            skin_name="AK-47 | Slate",
+            market_hash_name="AK-47 | Slate (Factory New)",
+            benchmark_price_brl=155.0,
+            fetched_at="2026-04-04T10:00:00",
+        )
+        previous = ComparisonSnapshot(
+            skin_id="skin_1",
+            skin_name="AK-47 | Slate",
+            market_hash_name="AK-47 | Slate (Factory New)",
+            benchmark_price_brl=140.0,
+            fetched_at="2026-03-28T10:00:00",
+        )
+        record = MarketIntelligenceRecord(
+            skin_id="skin_1",
+            skin_name="AK-47 | Slate",
+            snapshot=current,
+            history=[current, previous],
+        )
+
+        summary = summarize_skin_history(current, record)
+        self.assertEqual(summary["count"], 2)
+        self.assertEqual(summary["current"], 155.0)
+        self.assertEqual(summary["delta_value"], 15.0)
+        self.assertAlmostEqual(summary["delta_pct"], 15 / 140, places=4)
 
 
 class ThumbnailServiceTests(unittest.TestCase):
@@ -305,6 +504,147 @@ class CatalogSyncTests(unittest.TestCase):
                 storage.DATA_DIR = original_storage_data_dir
                 storage.DATA_FILE = original_storage_data_file
                 storage.DATA_FILE_BACKUP = original_storage_backup_file
+
+
+class ComparisonServiceTests(unittest.TestCase):
+    def test_build_projection_applies_local_adjustments(self) -> None:
+        snapshot = ComparisonSnapshot(
+            skin_id="skin123",
+            skin_name="AK-47 | Slate",
+            market_hash_name="AK-47 | Slate (Factory New)",
+            asset_price_brl=150.0,
+            benchmark_price_brl=140.0,
+            best_offer_price_brl=135.0,
+        )
+
+        projection = build_projection(
+            snapshot,
+            purchase_price_brl=100.0,
+            iof_percentual=6.38,
+            market_move_pct=10,
+            fx_move_pct=5,
+            liquidity_haircut_pct=4,
+            exit_fee_pct=2,
+            custom_target_pct=0,
+        )
+
+        self.assertAlmostEqual(projection["reference_price_brl"], 161.7, places=2)
+        self.assertAlmostEqual(projection["gross_exit_brl"], 155.23, places=2)
+        self.assertAlmostEqual(projection["net_exit_brl"], 152.13, places=2)
+        self.assertGreater(projection["pnl_brl"], 40.0)
+
+    def test_snapshot_uses_comparable_listing_data(self) -> None:
+        skin = Skin(
+            id="skin123",
+            nome="AK-47 | Slate",
+            tipo="Arma",
+            desgaste="Factory New (FN)",
+            preco_compra=120.0,
+            preco_atual=148.0,
+            float_value=0.151,
+            pattern_seed="77",
+        )
+        service = ComparisonService(ApiConfig(csfloat_api_key="key"))
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            original_market_file = storage.MARKET_INTELLIGENCE_FILE
+            try:
+                storage.MARKET_INTELLIGENCE_FILE = temp_path / "market_intelligence.json"
+
+                with patch("app.services.comparison_service.provider_is_in_cooldown", return_value=False), \
+                     patch("app.services.comparison_service.wait_for_provider_slot"), \
+                     patch("app.services.comparison_service.touch_provider_request"), \
+                     patch("app.services.comparison_service.record_provider_success"), \
+                     patch("app.services.comparison_service.PriceService.buscar_preco") as mock_price, \
+                     patch.object(service._csfloat, "buscar_comparaveis") as mock_compare, \
+                     patch.object(service._csfloat, "_buscar_cambio", return_value=5.0):
+                    mock_price.return_value.preco = 150.0
+                    mock_price.return_value.sucesso = True
+                    mock_price.return_value.provider = "CSFloat"
+                    mock_price.return_value.metodo = "mediana por float"
+
+                    mock_compare.return_value = (
+                        "mediana por float + pattern",
+                        [
+                            {
+                                "id": "1",
+                                "price": 3000,
+                                "watchers": 2,
+                                "min_offer_price": 2800,
+                                "seller": {
+                                    "username": "seller-a",
+                                    "statistics": {"total_trades": 12, "total_verified_trades": 10},
+                                },
+                                "item": {
+                                    "market_hash_name": "AK-47 | Slate (Factory New)",
+                                    "float_value": 0.1505,
+                                    "paint_seed": 77,
+                                    "icon_url": "icon-a",
+                                    "item_name": "AK-47 | Slate",
+                                    "wear_name": "Factory New",
+                                    "collection": "The Bank Collection",
+                                    "description": "Test item",
+                                    "asset_id": "asset-1",
+                                    "paint_index": 123,
+                                    "tradable": 0,
+                                    "has_screenshot": True,
+                                    "stickers": [{"name": "Sticker 1"}],
+                                    "scm": {"price": 3300, "volume": 4},
+                                },
+                            },
+                            {
+                                "id": "2",
+                                "price": 3200,
+                                "watchers": 1,
+                                "min_offer_price": 3000,
+                                "seller": {
+                                    "username": "seller-b",
+                                    "statistics": {"total_trades": 9, "total_verified_trades": 8},
+                                },
+                                "item": {
+                                    "market_hash_name": "AK-47 | Slate (Factory New)",
+                                    "float_value": 0.1520,
+                                    "paint_seed": 77,
+                                    "icon_url": "icon-b",
+                                },
+                            },
+                            {
+                                "id": "3",
+                                "price": 3400,
+                                "watchers": 0,
+                                "min_offer_price": 3100,
+                                "seller": {
+                                    "username": "seller-c",
+                                    "statistics": {"total_trades": 7, "total_verified_trades": 6},
+                                },
+                                "item": {
+                                    "market_hash_name": "AK-47 | Slate (Factory New)",
+                                    "float_value": 0.1499,
+                                    "paint_seed": 88,
+                                    "icon_url": "icon-c",
+                                },
+                            },
+                        ],
+                        True,
+                    )
+
+                    snapshot = service.montar_snapshot(skin)
+
+                self.assertEqual(snapshot.comparables_count, 3)
+                self.assertEqual(snapshot.asset_price_brl, 150.0)
+                self.assertEqual(snapshot.best_offer_price_brl, 150.0)
+                self.assertAlmostEqual(snapshot.benchmark_price_brl, 160.0, places=2)
+                self.assertEqual(snapshot.exact_seed_matches, 2)
+                self.assertEqual(snapshot.confidence, "Media")
+
+                saved = storage.obter_market_snapshot("skin123")
+                self.assertIsNotNone(saved)
+                self.assertEqual(saved.details.collection, "The Bank Collection")
+                self.assertEqual(saved.details.scm_volume, 4)
+                self.assertEqual(saved.details.watchers_total, 3)
+                self.assertEqual(saved.details.sticker_count, 1)
+            finally:
+                storage.MARKET_INTELLIGENCE_FILE = original_market_file
 
 
 if __name__ == "__main__":

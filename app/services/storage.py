@@ -6,8 +6,8 @@ import json
 import logging
 from pathlib import Path
 
-from app.config import DATA_DIR, DATA_FILE, DATA_FILE_BACKUP
-from app.models import AppData, Skin
+from app.config import DATA_DIR, DATA_FILE, DATA_FILE_BACKUP, MARKET_INTELLIGENCE_FILE, MARKET_INTELLIGENCE_HISTORY_LIMIT
+from app.models import AppData, AssetPosition, MarketIntelligenceRecord, Skin
 
 logger = logging.getLogger(__name__)
 _APP_DATA_CACHE: dict[Path, tuple[float, AppData]] = {}
@@ -124,6 +124,22 @@ def atualizar_skin(skin: Skin) -> AppData:
     return data
 
 
+def adicionar_posicao_ativo(position: AssetPosition) -> AppData:
+    """Adiciona uma posicao de ativo e persiste."""
+    data = carregar_dados()
+    data.asset_positions.append(position)
+    salvar_dados(data)
+    return data
+
+
+def remover_posicao_ativo(position_id: str) -> AppData:
+    """Remove uma posicao de ativo pelo ID e persiste."""
+    data = carregar_dados()
+    data.asset_positions = [item for item in data.asset_positions if item.id != position_id]
+    salvar_dados(data)
+    return data
+
+
 def salvar_config(data: AppData) -> None:
     """Salva apenas as configuracoes."""
     salvar_dados(data)
@@ -147,3 +163,46 @@ def importar_seed_data(seed_path: Path) -> AppData:
     except Exception:
         logger.exception("Erro ao importar seed %s", seed_path)
         return AppData()
+
+
+def carregar_market_intelligence() -> dict[str, MarketIntelligenceRecord]:
+    _ensure_dir()
+    if not MARKET_INTELLIGENCE_FILE.exists():
+        return {}
+
+    try:
+        raw = json.loads(MARKET_INTELLIGENCE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        logger.exception("Erro ao carregar inteligencia de mercado %s", MARKET_INTELLIGENCE_FILE)
+        return {}
+
+    registros: dict[str, MarketIntelligenceRecord] = {}
+    for key, value in raw.items():
+        try:
+            registros[key] = MarketIntelligenceRecord.model_validate(value)
+        except Exception:
+            logger.warning("Registro de inteligencia invalido ignorado: %s", key)
+    return registros
+
+
+def salvar_market_intelligence(registros: dict[str, MarketIntelligenceRecord]) -> None:
+    _ensure_dir()
+    serializable = {key: value.model_dump() for key, value in registros.items()}
+    _atomic_write(MARKET_INTELLIGENCE_FILE, json.dumps(serializable, indent=2))
+
+
+def salvar_market_snapshot(record: MarketIntelligenceRecord) -> None:
+    registros = carregar_market_intelligence()
+    existente = registros.get(record.skin_id)
+    if existente:
+        history = [record.snapshot] + existente.history
+        record.history = history[:MARKET_INTELLIGENCE_HISTORY_LIMIT]
+    else:
+        record.history = [record.snapshot][:MARKET_INTELLIGENCE_HISTORY_LIMIT]
+
+    registros[record.skin_id] = record
+    salvar_market_intelligence(registros)
+
+
+def obter_market_snapshot(skin_id: str) -> MarketIntelligenceRecord | None:
+    return carregar_market_intelligence().get(skin_id)
