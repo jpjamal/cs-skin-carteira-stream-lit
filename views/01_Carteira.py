@@ -415,6 +415,8 @@ if data.skins:
     filtradas = list(data.skins)
 
     with st.expander("Filtros da carteira", expanded=False):
+        busca_termo = st.text_input("Buscar skin por nome", placeholder="Ex: AK-47", key="busca_skin_nome").strip().lower()
+        
         fc1, fc2 = st.columns(2)
         tipos = sorted({s.tipo for s in data.skins})
         tipo_filtro = fc1.multiselect("Tipo", tipos, default=tipos)
@@ -426,6 +428,7 @@ if data.skins:
             for s in data.skins
             if s.tipo in tipo_filtro
             and s.plataforma in plat_filtro
+            and (not busca_termo or busca_termo in s.nome.lower())
         ]
 
     st.divider()
