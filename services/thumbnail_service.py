@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from app.config import (
+from config import (
     THUMBNAIL_ALLOWED_SOURCES,
     THUMBNAIL_ERROR_COOLDOWN_SECONDS,
     THUMBNAIL_MAX_BYTES,

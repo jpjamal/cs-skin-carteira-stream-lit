@@ -6,16 +6,16 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.config import CATALOG_SNAPSHOT_FILE
-from app.services.bymykel_catalog import (
+from config import CATALOG_SNAPSHOT_FILE
+from services.bymykel_catalog import (
     ByMykelCatalogClient,
     build_indexes,
     infer_required_sources,
     lookup_candidates,
     select_catalog_item,
 )
-from app.services.catalog_service import hydrate_app_data_from_catalog, load_catalog_snapshot
-from app.services.storage import carregar_dados, salvar_dados
+from services.catalog_service import hydrate_app_data_from_catalog, load_catalog_snapshot
+from data_manager import carregar_dados, salvar_dados
 
 
 @dataclass(slots=True)

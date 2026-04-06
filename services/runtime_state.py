@@ -7,8 +7,8 @@ import logging
 import time
 from pathlib import Path
 
-from app.config import PRICE_CACHE_FILE, PROVIDER_STATE_FILE
-from app.models import PriceCacheEntry, ProviderState
+from config import PRICE_CACHE_FILE, PROVIDER_STATE_FILE
+from models import PriceCacheEntry, ProviderState
 
 logger = logging.getLogger(__name__)
 

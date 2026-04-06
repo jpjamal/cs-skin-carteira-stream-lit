@@ -1,4 +1,4 @@
-"""Modelos de dados da aplicação CS2 Skin Tracker."""
+"""Modelos de dados da aplicacao CS2 Skin Tracker."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ DESGASTE_STEAM_MAP: dict[str, str] = {
 
 
 class Skin(BaseModel):
-    """Representa uma skin comprada pelo usuário."""
+    """Representa uma skin comprada pelo usuario."""
 
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
     nome: str
@@ -112,7 +112,7 @@ class Skin(BaseModel):
         return "Ao vivo"
 
     def gerar_market_hash_name(self) -> str:
-        """Gera o market_hash_name para busca de preço nas APIs."""
+        """Gera o market_hash_name para busca de preco nas APIs."""
         if self.market_hash_name:
             return self.market_hash_name
 
@@ -137,7 +137,7 @@ class Skin(BaseModel):
 
 
 class ApiConfig(BaseModel):
-    """Configurações de API keys."""
+    """Configuracoes de API keys."""
 
     csfloat_api_key: str = ""
     steam_enabled: bool = True
@@ -146,7 +146,7 @@ class ApiConfig(BaseModel):
 
 
 class PriceCacheEntry(BaseModel):
-    """Entrada persistida de cache de preÃ§o ou cÃ¢mbio."""
+    """Entrada persistida de cache de preco ou cambio."""
 
     key: str
     preco: float
@@ -171,7 +171,7 @@ class ProviderState(BaseModel):
 
 
 class AppData(BaseModel):
-    """Dados completos da aplicação."""
+    """Dados completos da aplicacao."""
 
     skins: list[Skin] = Field(default_factory=list)
     config: ApiConfig = Field(default_factory=ApiConfig)

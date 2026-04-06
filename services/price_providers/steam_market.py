@@ -1,15 +1,13 @@
-"""Provider de preço via Steam Community Market."""
+"""Provider de preco via Steam Community Market."""
 
 from __future__ import annotations
 
 import logging
 import re
-import time
 
 import requests
 
-from app.config import STEAM_DELAY_SECONDS
-from app.services.price_providers.base import PriceProvider, PriceResult
+from services.price_providers.base import PriceProvider, PriceResult
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +19,6 @@ CURRENCY_BRL = 7
 def _parse_brl(valor_str: str) -> float:
     """Converte 'R$ 1.234,56' para float."""
     limpo = re.sub(r"[^\d,.]", "", valor_str)
-    # Steam BRL usa '.' como milhar e ',' como decimal
     if "," in limpo:
         limpo = limpo.replace(".", "").replace(",", ".")
     try:
@@ -31,12 +28,11 @@ def _parse_brl(valor_str: str) -> float:
 
 
 class SteamMarketProvider(PriceProvider):
-    """Busca preços no Steam Community Market (sem API key)."""
+    """Busca precos no Steam Community Market (sem API key)."""
 
     nome = "Steam Market"
 
     def __init__(self) -> None:
-        self._last_request: float = 0.0
         self._session = requests.Session()
         self._session.headers.update(
             {
@@ -52,8 +48,6 @@ class SteamMarketProvider(PriceProvider):
         if not market_hash_name:
             return PriceResult.falha(self.nome, "market_hash_name vazio")
 
-        self._rate_limit()
-
         params = {
             "appid": APPID_CS2,
             "currency": CURRENCY_BRL,
@@ -66,13 +60,13 @@ class SteamMarketProvider(PriceProvider):
             data = resp.json()
 
             if not data.get("success"):
-                return PriceResult.falha(self.nome, f"Item não encontrado: {market_hash_name}")
+                return PriceResult.falha(self.nome, f"Item nao encontrado: {market_hash_name}")
 
             preco_str = data.get("lowest_price") or data.get("median_price", "0")
             preco = _parse_brl(preco_str)
 
             if preco <= 0:
-                return PriceResult.falha(self.nome, "Preço retornado inválido")
+                return PriceResult.falha(self.nome, "Preco retornado invalido")
 
             metodo = "lowest_price" if data.get("lowest_price") else "median_price"
             return PriceResult(
@@ -85,16 +79,11 @@ class SteamMarketProvider(PriceProvider):
             )
 
         except requests.exceptions.Timeout:
-            return PriceResult.falha(self.nome, "Timeout na requisição")
+            return PriceResult.falha(self.nome, "Timeout na requisicao")
         except requests.exceptions.RequestException as e:
             return PriceResult.falha(self.nome, f"Erro HTTP: {e}")
         except Exception as e:
             logger.exception("Erro inesperado Steam Market")
             return PriceResult.falha(self.nome, str(e))
 
-    def _rate_limit(self) -> None:
-        """Respeita rate limit do Steam (~20 req/min)."""
-        elapsed = time.time() - self._last_request
-        if elapsed < STEAM_DELAY_SECONDS:
-            time.sleep(STEAM_DELAY_SECONDS - elapsed)
-        self._last_request = time.time()
+

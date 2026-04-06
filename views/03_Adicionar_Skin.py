@@ -4,54 +4,51 @@ from __future__ import annotations
 
 import streamlit as st
 
-from app.config import DESGASTES, PLATAFORMAS, TIPOS_ITEM
-from app.models import Skin
-from app.services.price_service import PriceService
-from app.services.storage import adicionar_skin, carregar_dados
+from config import DESGASTES, PLATAFORMAS, TIPOS_ITEM
+from models import Skin
+from services.price_service import PriceService
+from data_manager import adicionar_skin, carregar_dados
 
+st.header("Adicionar Skin")
 
-def render() -> None:
-    st.header("Adicionar Skin")
+data = carregar_dados()
 
-    data = carregar_dados()
+with st.form("form_add_skin", clear_on_submit=True):
+    st.subheader("Informacoes do Item")
 
-    with st.form("form_add_skin", clear_on_submit=True):
-        st.subheader("Informacoes do Item")
+    col1, col2 = st.columns(2)
+    nome = col1.text_input("Nome do Item *", placeholder="Ex: AK-47 | Slate")
+    tipo = col2.selectbox("Tipo *", TIPOS_ITEM)
 
-        col1, col2 = st.columns(2)
-        nome = col1.text_input("Nome do Item *", placeholder="Ex: AK-47 | Slate")
-        tipo = col2.selectbox("Tipo *", TIPOS_ITEM)
+    col3, col4, col5 = st.columns(3)
+    desgaste = col3.selectbox("Desgaste", DESGASTES, index=5)
+    float_val = col4.number_input("Float Value", min_value=0.0, max_value=1.0, value=0.0, format="%.6f")
+    stattrak = col5.selectbox("StatTrak", ["Nao", "Sim", "N/A"])
 
-        col3, col4, col5 = st.columns(3)
-        desgaste = col3.selectbox("Desgaste", DESGASTES, index=5)
-        float_val = col4.number_input("Float Value", min_value=0.0, max_value=1.0, value=0.0, format="%.6f")
-        stattrak = col5.selectbox("StatTrak", ["Nao", "Sim", "N/A"])
+    col6, col7 = st.columns(2)
+    pattern = col6.text_input("Pattern / Seed", placeholder="Ex: 661, N/A")
+    market_hash = col7.text_input(
+        "Market Hash Name (opcional)",
+        placeholder="Nome exato no marketplace",
+        help="Se vazio, sera gerado automaticamente a partir do nome e desgaste.",
+    )
 
-        col6, col7 = st.columns(2)
-        pattern = col6.text_input("Pattern / Seed", placeholder="Ex: 661, N/A")
-        market_hash = col7.text_input(
-            "Market Hash Name (opcional)",
-            placeholder="Nome exato no marketplace",
-            help="Se vazio, sera gerado automaticamente a partir do nome e desgaste.",
-        )
+    st.divider()
+    st.subheader("Informacoes de Compra")
 
-        st.divider()
-        st.subheader("Informacoes de Compra")
+    col8, col9, col10 = st.columns(3)
+    plataforma = col8.selectbox("Plataforma de Compra", PLATAFORMAS)
+    preco_compra = col9.number_input("Preco de Compra (R$)", min_value=0.0, value=0.0, format="%.2f")
+    iof = col10.selectbox("IOF Aplicavel?", ["Sim", "Nao"], index=0)
 
-        col8, col9, col10 = st.columns(3)
-        plataforma = col8.selectbox("Plataforma de Compra", PLATAFORMAS)
-        preco_compra = col9.number_input("Preco de Compra (R$)", min_value=0.0, value=0.0, format="%.2f")
-        iof = col10.selectbox("IOF Aplicavel?", ["Sim", "Nao"], index=0)
+    notas = st.text_area("Notas", placeholder="Observacoes opcionais")
+    buscar_preco = st.checkbox("Buscar preco atual automaticamente apos salvar", value=True)
+    submitted = st.form_submit_button("Salvar Skin", type="primary", use_container_width=True)
 
-        notas = st.text_area("Notas", placeholder="Observacoes opcionais")
-        buscar_preco = st.checkbox("Buscar preco atual automaticamente apos salvar", value=True)
-        submitted = st.form_submit_button("Salvar Skin", type="primary", use_container_width=True)
-
-    if submitted:
-        if not nome.strip():
-            st.error("O nome do item e obrigatorio.")
-            return
-
+if submitted:
+    if not nome.strip():
+        st.error("O nome do item e obrigatorio.")
+    else:
         skin = Skin(
             nome=nome.strip(),
             tipo=tipo,
@@ -101,14 +98,14 @@ def render() -> None:
             f"Atual: R$ {skin.preco_atual:.2f}"
         )
 
-    with st.expander("Dicas de preenchimento", expanded=False):
-        st.markdown(
-            """
+with st.expander("Dicas de preenchimento", expanded=False):
+    st.markdown(
+        """
 **Market Hash Name** e o nome exato do item no marketplace.
 Se voce nao preencher, o sistema gera automaticamente baseado no nome e desgaste.
 
 **Pattern / Seed** faz mais diferenca em skins especiais. Em itens comuns, o app tende a confiar mais no float e nos comparaveis de mercado.
 
 **IOF** pode ser alterado em Configuracoes e a exibicao da carteira usa o valor configurado.
-            """
-        )
+        """
+    )

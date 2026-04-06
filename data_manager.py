@@ -1,4 +1,4 @@
-"""Servico de persistencia em JSON com escrita atomica e fallback por backup."""
+"""Camada central de persistencia JSON com escrita atomica e fallback por backup."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import json
 import logging
 from pathlib import Path
 
-from app.config import DATA_DIR, DATA_FILE, DATA_FILE_BACKUP
-from app.models import AppData, Skin
+from config import DATA_DIR, DATA_FILE, DATA_FILE_BACKUP, SEED_FILE
+from models import AppData, Skin
 
 logger = logging.getLogger(__name__)
 _APP_DATA_CACHE: dict[Path, tuple[float, AppData]] = {}
@@ -129,21 +129,22 @@ def salvar_config(data: AppData) -> None:
     salvar_dados(data)
 
 
-def importar_seed_data(seed_path: Path) -> AppData:
+def importar_seed_data(seed_path: Path | None = None) -> AppData:
     """Importa dados iniciais de um JSON seed se o arquivo principal nao existir."""
     _ensure_dir()
     if DATA_FILE.exists():
         return carregar_dados()
 
-    if not seed_path.exists():
+    seed = seed_path or SEED_FILE
+    if not seed.exists():
         return AppData()
 
     try:
-        raw = json.loads(seed_path.read_text(encoding="utf-8"))
+        raw = json.loads(seed.read_text(encoding="utf-8"))
         skins = [Skin.model_validate(s) for s in raw.get("skins", [])]
         data = AppData(skins=skins)
         salvar_dados(data)
         return data
     except Exception:
-        logger.exception("Erro ao importar seed %s", seed_path)
+        logger.exception("Erro ao importar seed %s", seed)
         return AppData()

@@ -1,12 +1,12 @@
-"""Constantes e configurações da aplicação."""
+"""Constantes e configuracoes da aplicacao."""
 
 from pathlib import Path
 
 APP_NAME = "CS2 Skin Tracker"
 APP_ICON = "🎮"
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = Path("/app/data") if Path("/app").exists() else BASE_DIR / "data"
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
 DATA_FILE = DATA_DIR / "skins.json"
 DATA_FILE_BACKUP = DATA_DIR / "skins.backup.json"
 PRICE_CACHE_FILE = DATA_DIR / "price_cache.json"
@@ -14,6 +14,7 @@ PROVIDER_STATE_FILE = DATA_DIR / "provider_state.json"
 THUMBNAILS_DIR = DATA_DIR / "thumbs"
 THUMBNAIL_STATE_FILE = DATA_DIR / "thumbnail_state.json"
 CATALOG_SNAPSHOT_FILE = DATA_DIR / "current_skin_catalog.json"
+SEED_FILE = BASE_DIR / "data" / "seed.json"
 
 TIPOS_ITEM = [
     "Arma", "Faca", "Luva", "Adesivo", "Agente",

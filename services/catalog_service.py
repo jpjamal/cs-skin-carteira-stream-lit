@@ -5,55 +5,15 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 
-from app.config import CATALOG_SNAPSHOT_FILE
-from app.models import AppData, Skin
-
-COLOR_SUFFIXES = {
-    "(Roxo)",
-    "(Azul)",
-    "(Rosa)",
-    "(Vermelho)",
-    "(Dourado)",
-    "(Verde)",
-    "(Laranja)",
-    "(Amarelo)",
-    "(Branco)",
-    "(Preto)",
-}
-
-
-def _strip_color_suffixes(name: str) -> str:
-    text = (name or "").strip()
-    changed = True
-    while changed:
-        changed = False
-        for suffix in COLOR_SUFFIXES:
-            token = f" {suffix}"
-            if text.endswith(token):
-                text = text[: -len(token)].strip()
-                changed = True
-    return text
+from config import CATALOG_SNAPSHOT_FILE
+from models import AppData, Skin
+from services.bymykel_catalog import lookup_candidates
 
 
 def _lookup_candidates(skin: Skin) -> list[str]:
-    base_name = _strip_color_suffixes(skin.nome)
-    candidates: list[str] = []
-
-    if skin.market_hash_name:
-        candidates.append(skin.market_hash_name.strip())
-
-    generated = skin.gerar_market_hash_name().strip()
-    if generated:
-        candidates.append(generated)
-
-    if skin.tipo == "Adesivo":
-        candidates.append(f"Sticker | {base_name}")
-    elif skin.tipo == "Charm":
-        candidates.append(f"Charm | {base_name}")
-    else:
-        candidates.append(base_name)
-
-    return list(dict.fromkeys(candidate for candidate in candidates if candidate))
+    """Adapter: converte Skin para dict e delega ao bymykel_catalog.lookup_candidates."""
+    allowed_fields = {key: value for key, value in skin.model_dump().items() if key in Skin.model_fields}
+    return lookup_candidates(allowed_fields)
 
 
 @lru_cache(maxsize=1)

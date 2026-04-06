@@ -7,7 +7,7 @@ build/
 venv/
 .venv/
 
-# Data (persistido via Docker volume)
+# Data (persistido via Docker volume ou local)
 data/skins.json
 data/skins.backup.json
 data/price_cache.json
@@ -15,6 +15,7 @@ data/provider_state.json
 data/current_skin_catalog.json
 data/catalog_cache/
 data/thumbs/
+data/thumbnail_state.json
 
 # Environment
 .env
@@ -26,7 +27,8 @@ tmp/
 .idea/
 *.swp
 *.swo
-
+.claude
+.agents
 # OS
 .DS_Store
 Thumbs.db

@@ -1,4 +1,4 @@
-"""Interface base para provedores de preço."""
+"""Interface base para provedores de preco."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from datetime import datetime
 
 @dataclass
 class PriceResult:
-    """Resultado de uma consulta de preço."""
+    """Resultado de uma consulta de preco."""
 
     preco: float
     moeda: str = "BRL"
@@ -41,18 +41,14 @@ class PriceResult:
 
 
 class PriceProvider(ABC):
-    """Interface para provedores de preço de skins."""
+    """Interface para provedores de preco de skins."""
 
     nome: str = ""
 
     @abstractmethod
     def buscar_preco(self, market_hash_name: str, float_value: float = 0.0, margem: float = 0.01, paint_seed: str = "") -> PriceResult:
-        """Busca o preço atual de uma skin pelo market_hash_name.
-
-        Se float_value > 0, filtra por faixa de float ±margem (quando suportado).
-        Se paint_seed, filtra por pattern seed (quando suportado).
-        """
+        """Busca o preco atual de uma skin pelo market_hash_name."""
 
     @abstractmethod
     def esta_configurado(self) -> bool:
-        """Verifica se o provider está pronto para uso."""
+        """Verifica se o provider esta pronto para uso."""

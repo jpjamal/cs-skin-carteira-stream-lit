@@ -6,7 +6,7 @@ import logging
 from typing import Callable
 from datetime import datetime
 
-from app.config import (
+from config import (
     CSFLOAT_CACHE_TTL_SECONDS,
     CSFLOAT_DELAY_SECONDS,
     STEAM_CACHE_TTL_SECONDS,
@@ -14,18 +14,20 @@ from app.config import (
     STEAM_DELAY_SECONDS,
     STEAM_FAILURE_THRESHOLD,
 )
-from app.models import ApiConfig, Skin
-from app.services.price_providers import (
+from models import ApiConfig, Skin
+from services.price_providers import (
     CSFloatProvider,
+    PriceProvider,
     PriceResult,
     SteamMarketProvider,
 )
-from app.services.runtime_state import (
+from services.runtime_state import (
     build_price_cache_key,
     get_cached_price,
     provider_is_in_cooldown,
     record_provider_failure,
     record_provider_success,
+    set_cached_price,
     touch_provider_request,
     wait_for_provider_slot,
 )
@@ -168,16 +170,26 @@ class PriceService:
     def _provider_order(self) -> list[str]:
         csfloat_ok = self._csfloat.esta_configurado()
         steam_ok = self._config.steam_enabled and self._steam.esta_configurado()
+        preferido = self._config.provider_preferido
+
+        disponiveis: dict[str, bool] = {
+            "csfloat": csfloat_ok,
+            "steam": steam_ok,
+        }
 
         ordered: list[str] = []
 
-        # Prioriza CSFloat sempre que houver API key, para reduzir dependencia do Steam.
-        if csfloat_ok:
-            ordered.append("csfloat")
-        if steam_ok:
-            ordered.append("steam")
+        # Provider preferido primeiro
+        if disponiveis.get(preferido):
+            ordered.append(preferido)
 
-        if not ordered and self._config.provider_preferido == "steam" and self._steam.esta_configurado():
+        # Depois os demais como fallback
+        for name, ok in disponiveis.items():
+            if ok and name not in ordered:
+                ordered.append(name)
+
+        # Ultimo recurso: Steam sem estar habilitado como fallback
+        if not ordered and preferido == "steam" and self._steam.esta_configurado():
             ordered.append("steam")
 
         return ordered
@@ -201,8 +213,6 @@ class PriceService:
             result = provider.buscar_preco(market_name)
 
         if result.sucesso and result.preco > 0:
-            from app.services.runtime_state import set_cached_price
-
             set_cached_price(
                 cache_key,
                 preco=result.preco,
@@ -228,7 +238,7 @@ class PriceService:
         logger.info("Falha no provider %s: %s", provider_name, result.erro)
         return result
 
-    def _resolve_provider(self, provider_name: str):
+    def _resolve_provider(self, provider_name: str) -> PriceProvider:
         if provider_name == "csfloat":
             return self._csfloat
         return self._steam

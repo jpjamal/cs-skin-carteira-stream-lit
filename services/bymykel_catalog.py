@@ -8,8 +8,8 @@ from typing import Any
 
 import requests
 
-from app.config import DATA_DIR
-from app.models import Skin
+from config import DATA_DIR
+from models import Skin
 
 RAW_API_BASE_URL = "https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api"
 DEFAULT_LANGUAGE = "en"

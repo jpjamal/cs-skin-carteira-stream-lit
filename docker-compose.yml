@@ -7,7 +7,7 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      # Dados persistentes — sobrevivem a rebuilds do container
+      - .:/app
       - tracker_data:/app/data
     environment:
       - PYTHONUNBUFFERED=1

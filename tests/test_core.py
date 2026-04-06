@@ -5,13 +5,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from app.models import AppData, Skin
-from app.services import catalog_service, runtime_state, storage
-from app.services.bymykel_catalog import ByMykelCatalogClient, infer_required_sources
-from app.services import catalog_sync
-from app.services.catalog_sync import sync_catalog_snapshot
-from app.services.price_providers.csfloat import CSFloatProvider
-from app.services.thumbnail_service import ThumbnailService
+from models import AppData, Skin
+from services import catalog_service, runtime_state
+from services.bymykel_catalog import ByMykelCatalogClient, infer_required_sources
+from services import catalog_sync
+from services.catalog_sync import sync_catalog_snapshot
+from services.price_providers.csfloat import CSFloatProvider
+from services.thumbnail_service import ThumbnailService
+import data_manager
 
 
 class SkinModelTests(unittest.TestCase):
@@ -29,25 +30,54 @@ class SkinModelTests(unittest.TestCase):
 
 
 class CSFloatEstimationTests(unittest.TestCase):
-    def test_estimation_prefers_nearest_float_comparables(self) -> None:
+    def test_estimation_prefers_nearest_float_sales(self) -> None:
         provider = CSFloatProvider("key")
-        listings = [
+        sales = [
             {"price": 10000, "item": {"float_value": 0.151}},
             {"price": 10500, "item": {"float_value": 0.148}},
             {"price": 11000, "item": {"float_value": 0.149}},
             {"price": 18000, "item": {"float_value": 0.400}},
             {"price": 19000, "item": {"float_value": 0.500}},
         ]
-        preco, usados = provider._estimar_preco_usd(listings, target_float=0.15)
-        self.assertEqual(usados, 5)
-        self.assertEqual(preco, 110.0)
+        preco, usados, metodo = provider._estimar_por_float(sales, target_float=0.15, margem=0.01)
+        self.assertGreater(preco, 0)
+        self.assertGreater(usados, 0)
+        self.assertIn("historico float", metodo)
+        # Com margem 0.01 do target 0.15, os 3 primeiros (0.148-0.151) sao selecionados
+        # mediana de [100.0, 105.0, 110.0] = 105.0
+        self.assertEqual(preco, 105.0)
+        self.assertEqual(usados, 3)
 
-    def test_extract_image_url_from_listing(self) -> None:
+    def test_estimation_falls_back_to_wider_margin(self) -> None:
         provider = CSFloatProvider("key")
-        listings = [
+        sales = [
+            {"price": 20000, "item": {"float_value": 0.10}},
+            {"price": 21000, "item": {"float_value": 0.12}},
+            {"price": 22000, "item": {"float_value": 0.13}},
+            {"price": 50000, "item": {"float_value": 0.90}},
+        ]
+        # margem 0.005 nao pega nenhum (target=0.15), deve ampliar
+        preco, usados, metodo = provider._estimar_por_float(sales, target_float=0.15, margem=0.005)
+        self.assertGreater(preco, 0)
+        self.assertIn("historico float", metodo)
+
+    def test_general_estimation_uses_all_sales(self) -> None:
+        provider = CSFloatProvider("key")
+        sales = [
+            {"price": 10000, "item": {"float_value": 0.15}},
+            {"price": 12000, "item": {"float_value": 0.30}},
+            {"price": 14000, "item": {"float_value": 0.50}},
+        ]
+        preco, usados = provider._estimar_geral(sales)
+        self.assertEqual(preco, 120.0)
+        self.assertEqual(usados, 3)
+
+    def test_extract_image_url_from_sale(self) -> None:
+        provider = CSFloatProvider("key")
+        sales = [
             {"item": {"icon_url": "-9a81-example-icon"}},
         ]
-        image_url = provider._extrair_imagem_url(listings)
+        image_url = provider._extrair_imagem_url(sales)
         self.assertIn("community.cloudflare.steamstatic.com/economy/image", image_url)
         self.assertIn("-9a81-example-icon", image_url)
 
@@ -56,25 +86,25 @@ class StorageBackupTests(unittest.TestCase):
     def test_load_falls_back_to_backup(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            original_data_file = storage.DATA_FILE
-            original_backup_file = storage.DATA_FILE_BACKUP
-            original_data_dir = storage.DATA_DIR
+            original_data_file = data_manager.DATA_FILE
+            original_backup_file = data_manager.DATA_FILE_BACKUP
+            original_data_dir = data_manager.DATA_DIR
             try:
-                storage.DATA_DIR = temp_path
-                storage.DATA_FILE = temp_path / "skins.json"
-                storage.DATA_FILE_BACKUP = temp_path / "skins.backup.json"
+                data_manager.DATA_DIR = temp_path
+                data_manager.DATA_FILE = temp_path / "skins.json"
+                data_manager.DATA_FILE_BACKUP = temp_path / "skins.backup.json"
 
                 valid_data = AppData(skins=[Skin(nome="M4A1-S | Basilisk")])
-                storage.DATA_FILE_BACKUP.write_text(valid_data.model_dump_json(indent=2), encoding="utf-8")
-                storage.DATA_FILE.write_text("{invalid json", encoding="utf-8")
+                data_manager.DATA_FILE_BACKUP.write_text(valid_data.model_dump_json(indent=2), encoding="utf-8")
+                data_manager.DATA_FILE.write_text("{invalid json", encoding="utf-8")
 
-                loaded = storage.carregar_dados()
+                loaded = data_manager.carregar_dados()
                 self.assertEqual(len(loaded.skins), 1)
                 self.assertEqual(loaded.skins[0].nome, "M4A1-S | Basilisk")
             finally:
-                storage.DATA_FILE = original_data_file
-                storage.DATA_FILE_BACKUP = original_backup_file
-                storage.DATA_DIR = original_data_dir
+                data_manager.DATA_FILE = original_data_file
+                data_manager.DATA_FILE_BACKUP = original_backup_file
+                data_manager.DATA_DIR = original_data_dir
 
 
 class ThumbnailServiceTests(unittest.TestCase):
@@ -252,15 +282,15 @@ class CatalogSyncTests(unittest.TestCase):
             temp_path = Path(temp_dir)
             original_catalog_snapshot_file = catalog_service.CATALOG_SNAPSHOT_FILE
             original_catalog_sync_snapshot_file = catalog_sync.CATALOG_SNAPSHOT_FILE
-            original_storage_data_dir = storage.DATA_DIR
-            original_storage_data_file = storage.DATA_FILE
-            original_storage_backup_file = storage.DATA_FILE_BACKUP
+            original_storage_data_dir = data_manager.DATA_DIR
+            original_storage_data_file = data_manager.DATA_FILE
+            original_storage_backup_file = data_manager.DATA_FILE_BACKUP
             try:
                 catalog_service.CATALOG_SNAPSHOT_FILE = temp_path / "current_skin_catalog.json"
                 catalog_sync.CATALOG_SNAPSHOT_FILE = temp_path / "current_skin_catalog.json"
-                storage.DATA_DIR = temp_path
-                storage.DATA_FILE = temp_path / "skins.json"
-                storage.DATA_FILE_BACKUP = temp_path / "skins.backup.json"
+                data_manager.DATA_DIR = temp_path
+                data_manager.DATA_FILE = temp_path / "skins.json"
+                data_manager.DATA_FILE_BACKUP = temp_path / "skins.backup.json"
 
                 data = AppData(
                     skins=[
@@ -272,7 +302,7 @@ class CatalogSyncTests(unittest.TestCase):
                         )
                     ]
                 )
-                storage.salvar_dados(data)
+                data_manager.salvar_dados(data)
 
                 session = Mock()
                 response = Mock()
@@ -295,16 +325,16 @@ class CatalogSyncTests(unittest.TestCase):
                 self.assertEqual(result.hydrated_skins, 1)
                 self.assertTrue((temp_path / "current_skin_catalog.json").exists())
 
-                reloaded = storage.carregar_dados()
+                reloaded = data_manager.carregar_dados()
                 self.assertEqual(reloaded.skins[0].market_hash_name, "Sticker | Battle Scarred (Holo)")
                 self.assertIn("community.akamai.steamstatic.com", reloaded.skins[0].imagem_url)
             finally:
                 catalog_service.CATALOG_SNAPSHOT_FILE = original_catalog_snapshot_file
                 catalog_sync.CATALOG_SNAPSHOT_FILE = original_catalog_sync_snapshot_file
                 catalog_service.load_catalog_snapshot.cache_clear()
-                storage.DATA_DIR = original_storage_data_dir
-                storage.DATA_FILE = original_storage_data_file
-                storage.DATA_FILE_BACKUP = original_storage_backup_file
+                data_manager.DATA_DIR = original_storage_data_dir
+                data_manager.DATA_FILE = original_storage_data_file
+                data_manager.DATA_FILE_BACKUP = original_storage_backup_file
 
 
 if __name__ == "__main__":
