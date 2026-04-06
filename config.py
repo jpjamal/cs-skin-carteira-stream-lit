@@ -33,7 +33,7 @@ PLATAFORMAS = [
     "White Market", "Trade P2P", "Drop in-game", "Outro",
 ]
 
-PRICE_PROVIDERS = ["steam", "csfloat"]
+PRICE_PROVIDERS = ["csfloat"]
 
 # Rate limiting
 STEAM_DELAY_SECONDS = 6.0

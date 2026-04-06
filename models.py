@@ -140,9 +140,9 @@ class ApiConfig(BaseModel):
     """Configuracoes de API keys."""
 
     csfloat_api_key: str = ""
-    steam_enabled: bool = True
+    steam_enabled: bool = False
     iof_percentual: float = 6.38
-    provider_preferido: str = "steam"
+    provider_preferido: str = "csfloat"
 
 
 class PriceCacheEntry(BaseModel):

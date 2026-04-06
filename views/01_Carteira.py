@@ -349,6 +349,27 @@ def _render_listagem(skins: list[Skin], iof_percentual: float) -> None:
 
 # ── Main ─────────────────────────────────────────────────────────────
 
+# Injeta CSS da Steam na propria pagina para nao sumir com o st.navigation
+st.markdown(
+    """
+    <style>
+    button[data-testid="baseButton-primary"],
+    div[data-testid="stButton"] button:first-child {
+        background-color: #66c0f4 !important;
+        border-color: #66c0f4 !important;
+        color: #1b2838 !important;
+    }
+    button[data-testid="baseButton-primary"]:hover,
+    div[data-testid="stButton"] button:first-child:hover {
+        background-color: #3b9cd9 !important;
+        border-color: #3b9cd9 !important;
+        color: white !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 data = carregar_dados()
 if hydrate_app_data_from_catalog(data):
     salvar_dados(data)
