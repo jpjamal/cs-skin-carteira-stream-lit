@@ -1266,11 +1266,11 @@
       "tipo": "Caixa",
       "desgaste": "N/A",
       "float_value": 0.0,
-      "quantidade": 11,
+      "quantidade": 12,
       "stattrak": "N/A",
       "pattern_seed": "N/A",
       "plataforma": "CSFloat",
-      "preco_compra": 3.8,
+      "preco_compra": 3.77,
       "iof_aplicavel": false,
       "preco_atual": 3.5,
       "preco_provider": "",
@@ -1284,9 +1284,9 @@
       "notas": "",
       "market_hash_name": "",
       "criado_em": "2026-04-07T00:54:17.096710",
-      "total_com_iof": 41.8,
-      "lucro": -3.3,
-      "variacao_pct": -0.0789
+      "total_com_iof": 45.24,
+      "lucro": -3.24,
+      "variacao_pct": -0.0716
     }
   ],
   "config": {
