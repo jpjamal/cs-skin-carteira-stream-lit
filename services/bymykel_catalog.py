@@ -9,7 +9,7 @@ from typing import Any
 import requests
 
 from config import DATA_DIR
-from models import Skin
+from models import Item, TipoItem
 
 RAW_API_BASE_URL = "https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api"
 DEFAULT_LANGUAGE = "en"
@@ -17,7 +17,7 @@ DEFAULT_TIMEOUT_SECONDS = 20
 DEFAULT_CACHE_DIR = DATA_DIR / "catalog_cache"
 
 SOURCE_FILES = (
-    "skins_not_grouped.json",
+    "items_not_grouped.json",
     "stickers.json",
     "keychains.json",
     "agents.json",
@@ -30,9 +30,9 @@ SOURCE_FILES = (
 )
 
 TYPE_TO_SOURCE = {
-    "Arma": ("skins_not_grouped.json",),
-    "Faca": ("skins_not_grouped.json",),
-    "Luva": ("skins_not_grouped.json",),
+    "Arma": ("items_not_grouped.json",),
+    "Faca": ("items_not_grouped.json",),
+    "Luva": ("items_not_grouped.json",),
     "Adesivo": ("stickers.json",),
     "Agente": ("agents.json",),
     "Charm": ("keychains.json",),
@@ -70,22 +70,22 @@ def strip_color_suffixes(name: str) -> str:
     return text
 
 
-def lookup_candidates(raw_skin: dict[str, Any]) -> list[str]:
-    allowed_fields = {key: value for key, value in raw_skin.items() if key in Skin.model_fields}
-    skin = Skin(**allowed_fields)
-    base_name = strip_color_suffixes(skin.nome)
+def lookup_candidates(raw_item: dict[str, Any]) -> list[str]:
+    allowed_fields = {key: value for key, value in raw_item.items() if key in Item.model_fields}
+    item = Item(**allowed_fields)
+    base_name = strip_color_suffixes(item.nome)
     candidates: list[str] = []
 
-    if skin.market_hash_name:
-        candidates.append(skin.market_hash_name.strip())
+    if item.market_hash_name:
+        candidates.append(item.market_hash_name.strip())
 
-    generated = skin.gerar_market_hash_name().strip()
+    generated = item.gerar_market_hash_name().strip()
     if generated:
         candidates.append(generated)
 
-    if skin.tipo == "Adesivo":
+    if item.tipo == "Adesivo":
         candidates.append(f"Sticker | {base_name}")
-    elif skin.tipo == "Charm":
+    elif item.tipo == "Charm":
         candidates.append(f"Charm | {base_name}")
     else:
         candidates.append(base_name)
@@ -93,11 +93,11 @@ def lookup_candidates(raw_skin: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(candidate for candidate in candidates if candidate))
 
 
-def infer_required_sources(raw_skins: list[dict[str, Any]]) -> list[str]:
+def infer_required_sources(raw_items: list[dict[str, Any]]) -> list[str]:
     selected: list[str] = []
-    for raw_skin in raw_skins:
-        skin_type = str(raw_skin.get("tipo", "")).strip()
-        for source_file in TYPE_TO_SOURCE.get(skin_type, ("collectibles.json", "tools.json")):
+    for raw_item in raw_items:
+        item_type = str(raw_item.get("tipo", "")).strip()
+        for source_file in TYPE_TO_SOURCE.get(item_type, ("collectibles.json", "tools.json")):
             if source_file not in selected:
                 selected.append(source_file)
     return selected
@@ -158,7 +158,7 @@ class ByMykelCatalogClient:
         self._local_api_root = local_api_root
         self._timeout_seconds = timeout_seconds
         self._session = session or requests.Session()
-        self._session.headers.setdefault("User-Agent", "CS2-Skin-Tracker/1.0")
+        self._session.headers.setdefault("User-Agent", "CS2-Item-Tracker/1.0")
         self._source_cache: dict[tuple[str, bool], list[dict[str, Any]]] = {}
 
     def load_catalog_items(
@@ -173,6 +173,35 @@ class ByMykelCatalogClient:
                 cloned_item["_source_file"] = source_file
                 items.append(cloned_item)
         return items
+
+    def search_items(self, query: str, limit: int = 50) -> list[dict[str, Any]]:
+        """Pesquisa itens no catalogo pelo nome (substring)."""
+        if not query or len(query) < 2:
+            return []
+
+        query_lower = query.lower()
+        results: list[dict[str, Any]] = []
+
+        # Pesquisar primeiro em crates, stickers e skins pois sao os mais comuns
+        ordered_sources = ["crates.json", "stickers.json", "items_not_grouped.json", "keychains.json", "agents.json"]
+        other_sources = [s for s in SOURCE_FILES if s not in ordered_sources]
+        
+        for source in (ordered_sources + other_sources):
+            try:
+                items = self.load_source_items(source)
+                for item in items:
+                    name = item.get("name", "").lower()
+                    market_name = item.get("market_hash_name", "").lower()
+                    if query_lower in name or query_lower in market_name:
+                        cloned = dict(item)
+                        cloned["_source_file"] = source
+                        results.append(cloned)
+                        if len(results) >= limit:
+                            return results
+            except Exception:
+                continue
+        
+        return results
 
     def load_source_items(
         self,

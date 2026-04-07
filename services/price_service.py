@@ -14,7 +14,7 @@ from config import (
     STEAM_DELAY_SECONDS,
     STEAM_FAILURE_THRESHOLD,
 )
-from models import ApiConfig, Skin
+from models import ApiConfig, Item, TipoItem
 from services.price_providers import (
     CSFloatProvider,
     PriceProvider,
@@ -75,15 +75,15 @@ class PriceService:
             disponiveis.append("csfloat")
         return disponiveis
 
-    def buscar_preco(self, skin: Skin) -> PriceResult:
+    def buscar_preco(self, item: Item) -> PriceResult:
         """Busca preco com cache persistente, protecao de cooldown e fallback."""
-        market_name = skin.gerar_market_hash_name()
+        market_name = item.gerar_market_hash_name()
         if not market_name:
             return PriceResult.falha("", "Nao foi possivel gerar market_hash_name")
 
-        float_val = skin.float_value if self._considerar_float else 0.0
+        float_val = item.float_value if self._considerar_float else 0.0
         margem = self._margem_float
-        seed = skin.pattern_seed if self._considerar_pattern else ""
+        seed = item.pattern_seed if self._considerar_pattern else ""
 
         stale_candidates: list[tuple[float, PriceResult]] = []
         last_failure: PriceResult | None = None
@@ -151,19 +151,19 @@ class PriceService:
 
     def buscar_precos_lote(
         self,
-        skins: list[Skin],
+        itens: list[Item],
         on_progress: Callable[[int, int, str], None] | None = None,
     ) -> dict[str, PriceResult]:
-        """Busca precos para varias skins com callback de progresso."""
+        """Busca precos para varios itens com callback de progresso."""
         resultados: dict[str, PriceResult] = {}
-        total = len(skins)
+        total = len(itens)
 
-        for i, skin in enumerate(skins):
+        for i, item in enumerate(itens):
             if on_progress:
-                on_progress(i + 1, total, skin.nome)
+                on_progress(i + 1, total, item.nome)
 
-            resultado = self.buscar_preco(skin)
-            resultados[skin.id] = resultado
+            resultado = self.buscar_preco(item)
+            resultados[item.id] = resultado
 
         return resultados
 

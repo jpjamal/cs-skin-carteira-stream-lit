@@ -36,7 +36,7 @@ class SteamMarketProvider(PriceProvider):
         self._session = requests.Session()
         self._session.headers.update(
             {
-                "User-Agent": "CS2-Skin-Tracker/1.0",
+                "User-Agent": "CS2-Item-Tracker/1.0",
                 "Accept": "application/json",
             }
         )

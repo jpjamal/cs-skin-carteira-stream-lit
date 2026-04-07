@@ -8,11 +8,6 @@ services:
       - "8501:8501"
     volumes:
       - .:/app
-      - tracker_data:/app/data
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
-
-volumes:
-  tracker_data:
-    driver: local

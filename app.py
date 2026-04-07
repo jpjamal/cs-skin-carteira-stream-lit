@@ -44,7 +44,7 @@ paginas = st.navigation(
     [
         st.Page("views/01_Carteira.py",        title="Carteira",        icon="💼", default=True),
         st.Page("views/02_Inventario.py",       title="Inventario",      icon="🎒"),
-        st.Page("views/03_Adicionar_Skin.py",   title="Adicionar Skin",  icon="➕"),
+        st.Page("views/03_Adicionar_Item.py",   title="Adicionar Item",  icon="➕"),
         st.Page("views/05_Rentabilidade.py",    title="Rentabilidade",   icon="📈"),
         st.Page("views/04_Configuracoes.py",    title="Configuracoes",   icon="⚙️"),
     ]

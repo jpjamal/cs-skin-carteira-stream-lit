@@ -1,4 +1,4 @@
-"""Provedores de preco para skins CS2."""
+"""Provedores de preco para items CS2."""
 
 from services.price_providers.base import PriceProvider, PriceResult
 from services.price_providers.csfloat import CSFloatProvider

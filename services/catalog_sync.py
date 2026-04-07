@@ -22,10 +22,10 @@ from data_manager import carregar_dados, salvar_dados
 class CatalogSyncResult:
     snapshot_path: Path
     source_files: list[str]
-    total_current_skins: int
-    matched_skins: int
-    unmatched_skins: list[str]
-    hydrated_skins: int
+    total_current_items: int
+    matched_items: int
+    unmatched_items: list[str]
+    hydrated_items: int
     mode: str
 
 
@@ -40,33 +40,33 @@ def sync_catalog_snapshot(
     force_refresh: bool = False,
     client: ByMykelCatalogClient | None = None,
 ) -> CatalogSyncResult:
-    """Gera o snapshot enxuto do catalogo e hidrata as skins locais."""
+    """Gera o snapshot enxuto do catalogo e hidrata os itens locais."""
     data = carregar_dados()
-    raw_skins = [skin.model_dump() for skin in data.skins]
+    raw_items = [item.model_dump() for item in data.itens]
 
     catalog_client = client or ByMykelCatalogClient()
-    source_files = infer_required_sources(raw_skins)
+    source_files = infer_required_sources(raw_items)
     items = catalog_client.load_catalog_items(source_files, force_refresh=force_refresh) if source_files else []
     by_lookup, by_name = build_indexes(items)
 
-    items_by_skin_id: dict[str, dict] = {}
+    items_by_item_id: dict[str, dict] = {}
     items_by_lookup: dict[str, dict] = {}
     unmatched: list[str] = []
 
-    for raw_skin in raw_skins:
+    for raw_item in raw_items:
         match = None
-        for candidate in lookup_candidates(raw_skin):
+        for candidate in lookup_candidates(raw_item):
             match = by_lookup.get(candidate) or by_name.get(candidate)
             if match:
                 break
 
         if not match:
-            unmatched.append(raw_skin.get("nome", ""))
+            unmatched.append(raw_item.get("nome", ""))
             continue
 
         selected = select_catalog_item(match)
-        items_by_skin_id[raw_skin["id"]] = selected
-        for candidate in lookup_candidates(raw_skin):
+        items_by_item_id[raw_item["id"]] = selected
+        for candidate in lookup_candidates(raw_item):
             items_by_lookup.setdefault(candidate, selected)
 
     payload = {
@@ -77,25 +77,25 @@ def sync_catalog_snapshot(
             "mode": "remote-cached" if getattr(catalog_client, "_local_api_root", None) is None else "local",
             "source_files": source_files,
         },
-        "total_current_skins": len(raw_skins),
-        "matched_skins": len(items_by_skin_id),
-        "unmatched_skins": unmatched,
-        "items_by_skin_id": items_by_skin_id,
+        "total_current_items": len(raw_items),
+        "matched_items": len(items_by_item_id),
+        "unmatched_items": unmatched,
+        "items_by_item_id": items_by_item_id,
         "items_by_lookup": items_by_lookup,
     }
     _write_snapshot_atomic(CATALOG_SNAPSHOT_FILE, payload)
 
     load_catalog_snapshot.cache_clear()
-    hydrated_skins = hydrate_app_data_from_catalog(data)
-    if hydrated_skins:
+    hydrated_items = hydrate_app_data_from_catalog(data)
+    if hydrated_items:
         salvar_dados(data)
 
     return CatalogSyncResult(
         snapshot_path=CATALOG_SNAPSHOT_FILE,
         source_files=source_files,
-        total_current_skins=len(raw_skins),
-        matched_skins=len(items_by_skin_id),
-        unmatched_skins=unmatched,
-        hydrated_skins=hydrated_skins,
+        total_current_items=len(raw_items),
+        matched_items=len(items_by_item_id),
+        unmatched_items=unmatched,
+        hydrated_items=hydrated_items,
         mode=payload["source"]["mode"],
     )

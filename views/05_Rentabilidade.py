@@ -75,19 +75,19 @@ def _get_benchmark_data(period: str = "5y") -> dict[str, float]:
 
 def _render_rentabilidade_view() -> None:
     st.header("Rentabilidade da Carteira vs Mercado")
-    st.markdown("Compare o retorno atual da sua carteira de skins com indicadores financeiros.")
+    st.markdown("Compare o retorno atual da sua carteira de itens com indicadores financeiros.")
 
     data = carregar_dados()
-    skins = data.skins
+    itens = data.itens
     iof_percentual = data.config.iof_percentual
 
-    if not skins:
-        st.info("Sua carteira está vazia. Adicione skins para visualizar a rentabilidade.")
+    if not itens:
+        st.info("Sua carteira está vazia. Adicione itens para visualizar a rentabilidade.")
         return
 
     # Calculo da carteira CS
-    total_investido = sum(s.total_com_iof_com_taxa(iof_percentual) for s in skins)
-    valor_atual = sum(s.preco_atual for s in skins)
+    total_investido = sum(s.total_com_iof_com_taxa(iof_percentual) for s in itens)
+    valor_atual = sum(s.preco_atual * s.quantidade for s in itens)
     lucro_total = valor_atual - total_investido
     carteira_pct = (lucro_total / total_investido * 100) if total_investido > 0 else 0.0
 
@@ -99,11 +99,11 @@ def _render_rentabilidade_view() -> None:
             "Selecione o horizonte de tempo para os benchmarks (Ibovespa, CDI, etc):", 
             options=["1y", "2y", "3y", "5y"], 
             format_func=lambda x: f"Últimos {x.replace('y','')} Ano(s)",
-            help="Como o app não tem o histórico temporal exato das suas skins na plataforma, selecionando um horizonte de tempo você pode comparar a sua 'Rentabilidade Geral Real' contra quanto a bolsa gerou nos últimos N anos."
+            help="Como o app não tem o histórico temporal exato dos seus itens na plataforma, selecionando um horizonte de tempo você pode comparar a sua 'Rentabilidade Geral Real' contra quanto a bolsa gerou nos últimos N anos."
         )
 
         st.metric("📦 Retorno da sua Carteira CS2", f"R$ {lucro_total:,.2f}", delta=f"{carteira_pct:+.2f}%", delta_color="normal")
-        st.caption("A rentabilidade carteira é a diferença entre os preços de compra (com taxas) e o valor de mercado atual de todas as skins listadas juntas.")
+        st.caption("A rentabilidade carteira é a diferença entre os preços de compra (com taxas) e o valor de mercado atual de todos os itens listados juntos.")
 
     with col2:
         with st.spinner("Carregando indicadores do mercado..."):

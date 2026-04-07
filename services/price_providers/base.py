@@ -41,13 +41,13 @@ class PriceResult:
 
 
 class PriceProvider(ABC):
-    """Interface para provedores de preco de skins."""
+    """Interface para provedores de preco de items."""
 
     nome: str = ""
 
     @abstractmethod
     def buscar_preco(self, market_hash_name: str, float_value: float = 0.0, margem: float = 0.01, paint_seed: str = "") -> PriceResult:
-        """Busca o preco atual de uma skin pelo market_hash_name."""
+        """Busca o preco atual de uma item pelo market_hash_name."""
 
     @abstractmethod
     def esta_configurado(self) -> bool:

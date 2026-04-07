@@ -86,10 +86,10 @@ st.subheader("Dados")
 
 col_a, col_b = st.columns(2)
 with col_a:
-    st.metric("Skins cadastradas", len(data.skins))
+    st.metric("Skins cadastradas", len(data.itens))
 
 with col_b:
-    total = sum(s.total_com_iof_com_taxa(data.config.iof_percentual) for s in data.skins)
+    total = sum(s.total_com_iof_com_taxa(data.config.iof_percentual) for s in data.itens)
     st.metric("Investimento total", f"R$ {total:,.2f}")
 
 st.caption(f"Entradas no cache persistente: {len(load_price_cache())}")

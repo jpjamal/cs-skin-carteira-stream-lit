@@ -1,4 +1,4 @@
-"""Modelos de dados da aplicacao CS2 Skin Tracker."""
+"""Modelos de dados da aplicacao CS2 Item Tracker."""
 
 from __future__ import annotations
 
@@ -42,20 +42,21 @@ DESGASTE_STEAM_MAP: dict[str, str] = {
 }
 
 
-class Skin(BaseModel):
-    """Representa uma skin comprada pelo usuario."""
+class Item(BaseModel):
+    """Representa um item comprado pelo usuario."""
 
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
     nome: str
     tipo: str = TipoItem.ARMA
     desgaste: str = Desgaste.NA
     float_value: float = 0.0
+    quantidade: int = 1
     stattrak: str = "Não"
     pattern_seed: str = ""
     plataforma: str = ""
-    preco_compra: float = 0.0
+    preco_compra: float = 0.0  # Unitário
     iof_aplicavel: bool = False
-    preco_atual: float = 0.0
+    preco_atual: float = 0.0  # Unitário
     preco_provider: str = ""
     preco_metodo: str = ""
     preco_amostra: int = 0
@@ -84,22 +85,25 @@ class Skin(BaseModel):
         return self.variacao_pct_com_taxa()
 
     def total_com_iof_com_taxa(self, iof_percentual: float = 6.38) -> float:
-        if self.iof_aplicavel and self.preco_compra > 0:
-            return round(self.preco_compra * (1 + (iof_percentual / 100)), 2)
-        return self.preco_compra
+        total_compra = self.preco_compra * self.quantidade
+        if self.iof_aplicavel and total_compra > 0:
+            return round(total_compra * (1 + (iof_percentual / 100)), 2)
+        return total_compra
 
     def lucro_com_taxa(self, iof_percentual: float = 6.38) -> float:
         total_com_iof = self.total_com_iof_com_taxa(iof_percentual)
-        if self.preco_atual > 0 and total_com_iof > 0:
-            return round(self.preco_atual - total_com_iof, 2)
-        if self.preco_atual > 0 and total_com_iof == 0:
-            return self.preco_atual
+        total_atual = self.preco_atual * self.quantidade
+        if total_atual > 0 and total_com_iof > 0:
+            return round(total_atual - total_com_iof, 2)
+        if total_atual > 0 and total_com_iof == 0:
+            return total_atual
         return 0.0
 
     def variacao_pct_com_taxa(self, iof_percentual: float = 6.38) -> float:
         total_com_iof = self.total_com_iof_com_taxa(iof_percentual)
-        if total_com_iof > 0 and self.preco_atual > 0:
-            return round((self.preco_atual - total_com_iof) / total_com_iof, 4)
+        total_atual = self.preco_atual * self.quantidade
+        if total_com_iof > 0 and total_atual > 0:
+            return round((total_atual - total_com_iof) / total_com_iof, 4)
         return 0.0
 
     def status_preco(self) -> str:
@@ -173,5 +177,5 @@ class ProviderState(BaseModel):
 class AppData(BaseModel):
     """Dados completos da aplicacao."""
 
-    skins: list[Skin] = Field(default_factory=list)
+    itens: list[Item] = Field(default_factory=list)
     config: ApiConfig = Field(default_factory=ApiConfig)

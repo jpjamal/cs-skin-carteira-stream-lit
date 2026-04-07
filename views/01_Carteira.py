@@ -1,52 +1,52 @@
-"""Pagina Carteira - exibe o portfolio completo de skins."""
+"""Pagina Carteira - exibe o portfolio completo de itens."""
 
 from __future__ import annotations
 
 import streamlit as st
 
 from config import DESGASTES, PLATAFORMAS, PRICE_PROVIDERS, TIPOS_ITEM
-from models import Skin
+from models import Item, TipoItem
 from services.catalog_service import hydrate_app_data_from_catalog
 from services.price_service import PriceService
-from data_manager import adicionar_skin, atualizar_skin, carregar_dados, remover_skin, salvar_dados
+from data_manager import adicionar_item, atualizar_item, carregar_dados, exportar_seed, remover_item, salvar_dados
 
 PROVIDER_LABELS = {
     "steam": "Steam Market",
     "csfloat": "CSFloat",
 }
 
-def _aplicar_resultado_preco(skin: Skin, result) -> None:
+def _aplicar_resultado_preco(item: Item, result) -> None:
     if result.sucesso and result.preco > 0:
-        skin.preco_atual = result.preco
-    skin.preco_atualizado_em = result.atualizado_em
+        item.preco_atual = result.preco
+    item.preco_atualizado_em = result.atualizado_em
     if result.imagem_url:
-        skin.imagem_url = result.imagem_url
+        item.imagem_url = result.imagem_url
 
 
 def _hero(data) -> None:
-    sem_preco = sum(1 for skin in data.skins if skin.preco_atual <= 0)
+    sem_preco = sum(1 for item in data.itens if item.preco_atual <= 0)
     st.header("Resumo da carteira")
-    st.caption(f"{len(data.skins)} skin(s) | IOF: {data.config.iof_percentual:.2f}% | Sem preco: {sem_preco}")
+    st.caption(f"{len(data.itens)} item(s) | IOF: {data.config.iof_percentual:.2f}% | Sem preco: {sem_preco}")
 
 
-def _metricas_resumo(skins: list[Skin], iof_percentual: float) -> None:
-    if not skins:
-        st.info("Nenhuma skin cadastrada. Adicione uma skin para comecar.")
+def _metricas_resumo(itens: list[Item], iof_percentual: float) -> None:
+    if not itens:
+        st.info("Nenhum item cadastrada. Adicione uma item para comecar.")
         return
 
-    total_investido = sum(s.total_com_iof_com_taxa(iof_percentual) for s in skins)
-    valor_atual = sum(s.preco_atual for s in skins)
+    total_investido = sum(s.total_com_iof_com_taxa(iof_percentual) for s in itens)
+    valor_atual = sum(s.preco_atual for s in itens)
     lucro_total = valor_atual - total_investido
     variacao = (lucro_total / total_investido * 100) if total_investido > 0 else 0.0
-    skins_com_preco = [s for s in skins if s.preco_atual > 0]
+    itens_com_preco = [s for s in itens if s.preco_atual > 0]
     preco_medio = (
-        sum(s.preco_atual for s in skins_com_preco) / len(skins_com_preco)
-        if skins_com_preco
+        sum(s.preco_atual for s in itens_com_preco) / len(itens_com_preco)
+        if itens_com_preco
         else 0.0
     )
 
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Itens", len(skins))
+    c1.metric("Itens", len(itens))
     c2.metric("Investido", f"R$ {total_investido:,.2f}")
     c3.metric("Valor Atual", f"R$ {valor_atual:,.2f}")
     c4.metric("Lucro / Prejuizo", f"R$ {lucro_total:,.2f}", delta=f"{variacao:+.1f}%")
@@ -60,13 +60,13 @@ def _atualizar_precos(
     margem_float: float = 0.01,
     considerar_pattern: bool = False,
 ) -> None:
-    if not data.skins:
-        st.warning("Nenhuma skin para atualizar.")
+    if not data.itens:
+        st.warning("Nenhum item para atualizar.")
         return
 
-    skins_alvo = [s for s in data.skins if s.preco_atual <= 0]
-    if not skins_alvo:
-        skins_alvo = data.skins
+    itens_alvo = [i for i in data.itens if i.preco_atual <= 0]
+    if not itens_alvo:
+        itens_alvo = data.itens
 
     config_busca = data.config.model_copy(update={"provider_preferido": provider_escolhido})
     svc = PriceService(
@@ -80,24 +80,24 @@ def _atualizar_precos(
         st.error("Nenhum provider de preco disponivel. Configure uma API key em Configuracoes.")
         return
 
-    st.info(f"Atualizando {len(skins_alvo)} item(ns)...")
+    st.info(f"Atualizando {len(itens_alvo)} item(ns)...")
     progress = st.progress(0, text="Iniciando...")
     erros = []
 
     def on_progress(atual: int, total: int, nome: str) -> None:
         progress.progress(atual / total, text=f"({atual}/{total}) {nome}")
 
-    resultados = svc.buscar_precos_lote(skins_alvo, on_progress=on_progress)
+    resultados = svc.buscar_precos_lote(itens_alvo, on_progress=on_progress)
 
     atualizados = 0
-    for skin in data.skins:
-        result = resultados.get(skin.id)
+    for item in data.itens:
+        result = resultados.get(item.id)
         if result:
-            _aplicar_resultado_preco(skin, result)
+            _aplicar_resultado_preco(item, result)
             if result.sucesso and result.preco > 0:
                 atualizados += 1
             elif not result.sucesso:
-                erros.append(f"**{skin.nome}**: {result.erro}")
+                erros.append(f"**{item.nome}**: {result.erro}")
 
     salvar_dados(data)
     progress.empty()
@@ -114,22 +114,67 @@ def _atualizar_precos(
 # ── Dialogs ──────────────────────────────────────────────────────────
 
 
-@st.dialog("Adicionar Skin", width="large")
+@st.dialog("Adicionar Item", width="large")
 def _dialog_adicionar() -> None:
     data = carregar_dados()
-    st.subheader("Informacoes do Item")
+    
+    # --- Buscador de Itens do Catalogo ---
+    with st.expander("🔍 Procurar no Catálogo", expanded=False):
+        search_query = st.text_input("Pesquisar item:", key="diag_add_catalog_search")
+        if search_query:
+            client = ByMykelCatalogClient()
+            search_results = client.search_items(search_query)
+            if search_results:
+                options = {f"{r.get('name')} ({r.get('_source_file', 'catalog').replace('.json', '')})": r for r in search_results}
+                selected_label = st.selectbox("Selecione o item oficial:", options.keys(), key="diag_add_sel")
+                if selected_label and st.button("Usar este item", key="diag_add_use"):
+                    st.session_state["diag_nome_pre"] = options[selected_label].get("name")
+                    src = options[selected_label].get("_source_file", "")
+                    if "crates" in src: st.session_state["diag_tipo_pre"] = "Caixa"
+                    elif "stickers" in src: st.session_state["diag_tipo_pre"] = "Adesivo"
+                    elif "agents" in src: st.session_state["diag_tipo_pre"] = "Agente"
+                    elif "items_not_grouped" in src:
+                        w = options[selected_label].get("name", "").lower()
+                        if "gloves" in w or "wraps" in w: st.session_state["diag_tipo_pre"] = "Luva"
+                        elif "knife" in w or "bayonet" in w or "karambit" in w or "daggers" in w: st.session_state["diag_tipo_pre"] = "Faca"
+                        else: st.session_state["diag_tipo_pre"] = "Arma"
+                    st.rerun()
+
+    st.subheader("Informações do Item")
+
 
     col1, col2 = st.columns(2)
-    nome = col1.text_input("Nome do Item *", placeholder="Ex: AK-47 | Slate", key="add_nome")
-    tipo = col2.selectbox("Tipo *", TIPOS_ITEM, key="add_tipo")
+    def_nome = st.session_state.get("diag_nome_pre", "")
+    nome = col1.text_input("Nome do Item *", value=def_nome, placeholder="Ex: AK-47 | Slate", key="add_nome")
+    
+    def_tipo = st.session_state.get("diag_tipo_pre", TIPOS_ITEM[0])
+    try:
+        tipo_idx = TIPOS_ITEM.index(def_tipo)
+    except:
+        tipo_idx = 0
+    tipo = col2.selectbox("Tipo *", TIPOS_ITEM, index=tipo_idx, key="add_tipo")
 
-    col3, col4, col5 = st.columns(3)
-    desgaste = col3.selectbox("Desgaste", DESGASTES, index=5, key="add_desgaste")
-    float_val = col4.number_input("Float Value", min_value=0.0, max_value=1.0, value=0.0, format="%.6f", key="add_float")
-    stattrak = col5.selectbox("StatTrak", ["Nao", "Sim", "N/A"], key="add_stattrak")
+    is_lote = tipo not in [TipoItem.ARMA, TipoItem.FACA, TipoItem.LUVA]
 
-    col6, col7 = st.columns(2)
-    pattern = col6.text_input("Pattern / Seed", placeholder="Ex: 661, N/A", key="add_pattern")
+    col3, col4 = st.columns(2)
+    if is_lote:
+        quantidade = col3.number_input("Quantidade", min_value=1, value=1, step=1, key="add_quantidade")
+        desgaste = "N/A"
+        float_val = 0.0
+        pattern = "N/A"
+        stattrak = "N/A"
+        col4.selectbox("Desgaste", ["N/A"], index=0, disabled=True, key="add_desgaste_dis")
+    else:
+        quantidade = 1
+        col3.number_input("Quantidade (Fixo em 1 para Armas)", min_value=1, max_value=1, value=1, disabled=True, key="add_quantidade_dis")
+        desgaste = col4.selectbox("Desgaste", DESGASTES, index=5, key="add_desgaste")
+
+        c_float, c_pat, c_st = st.columns(3)
+        float_val = c_float.number_input("Float Value", min_value=0.0, max_value=1.0, value=0.0, format="%.6f", key="add_float")
+        stattrak = c_st.selectbox("StatTrak", ["Não", "Sim", "N/A"], key="add_stattrak")
+        pattern = c_pat.text_input("Pattern / Seed", placeholder="Ex: 661", key="add_pattern")
+
+    col7 = st.columns(1)[0]
     market_hash = col7.text_input(
         "Market Hash Name (opcional)",
         placeholder="Nome exato no marketplace",
@@ -142,7 +187,7 @@ def _dialog_adicionar() -> None:
 
     col8, col9, col10 = st.columns(3)
     plataforma = col8.selectbox("Plataforma de Compra", PLATAFORMAS, key="add_plataforma")
-    preco_compra = col9.number_input("Preco de Compra (R$)", min_value=0.0, value=0.0, format="%.2f", key="add_preco")
+    preco_compra = col9.number_input("Preco de Compra Unitario (R$)", min_value=0.0, value=0.0, format="%.2f", key="add_preco")
     iof = col10.selectbox("IOF Aplicavel?", ["Sim", "Nao"], index=0, key="add_iof")
 
     notas = st.text_area("Notas", placeholder="Observacoes opcionais", key="add_notas")
@@ -153,20 +198,21 @@ def _dialog_adicionar() -> None:
         if st.button("Cancelar", use_container_width=True, key="add_cancel"):
             st.rerun()
     with col_save:
-        salvar = st.button("Salvar Skin", type="primary", use_container_width=True, key="add_salvar")
+        salvar = st.button("Salvar Item", type="primary", use_container_width=True, key="add_salvar")
 
     if salvar:
         if not nome.strip():
             st.error("O nome do item e obrigatorio.")
             return
 
-        skin = Skin(
+        item = Item(
             nome=nome.strip(),
             tipo=tipo,
             desgaste=desgaste,
             float_value=float_val,
+            quantidade=quantidade,
             stattrak=stattrak,
-            pattern_seed=pattern.strip(),
+            pattern_seed=pattern.strip() if not is_lote else "N/A",
             plataforma=plataforma,
             preco_compra=preco_compra,
             iof_aplicavel=(iof == "Sim"),
@@ -177,128 +223,151 @@ def _dialog_adicionar() -> None:
         if buscar_preco:
             with st.spinner("Buscando preco atual..."):
                 svc = PriceService(data.config)
-                resultado = svc.buscar_preco(skin)
+                resultado = svc.buscar_preco(item)
                 if resultado.sucesso:
-                    skin.preco_atual = resultado.preco
-                    skin.preco_provider = resultado.provider
-                    skin.preco_metodo = resultado.metodo
-                    skin.preco_amostra = resultado.amostra
-                    skin.preco_confianca = resultado.confianca
-                    skin.preco_cache_hit = resultado.cache_hit
-                    skin.preco_stale = resultado.stale
-                    skin.preco_atualizado_em = resultado.atualizado_em
+                    item.preco_atual = resultado.preco
+                    item.preco_provider = resultado.provider
+                    item.preco_metodo = resultado.metodo
+                    item.preco_amostra = resultado.amostra
+                    item.preco_confianca = resultado.confianca
+                    item.preco_cache_hit = resultado.cache_hit
+                    item.preco_stale = resultado.stale
+                    item.preco_atualizado_em = resultado.atualizado_em
                     if resultado.imagem_url:
-                        skin.imagem_url = resultado.imagem_url
+                        item.imagem_url = resultado.imagem_url
 
-        adicionar_skin(skin)
-        st.success(f"**{skin.nome}** adicionada com sucesso!")
+        adicionar_item(item)
+        st.success(f"**{item.nome}** (Qtd: {item.quantidade}) adicionado com sucesso!")
         st.rerun()
 
 
-@st.dialog("Editar Skin", width="large")
-def _dialog_editar(skin_id: str) -> None:
+@st.dialog("Editar Item", width="large")
+def _dialog_editar(item_id: str) -> None:
     data = carregar_dados()
-    skin = next((s for s in data.skins if s.id == skin_id), None)
-    if not skin:
-        st.error("Skin nao encontrada.")
+    item = next((s for s in data.itens if s.id == item_id), None)
+    if not item:
+        st.error("Item nao encontrado.")
         return
 
     col1, col2 = st.columns(2)
-    nome = col1.text_input("Nome", value=skin.nome, key=f"edit_nome_{skin_id}")
+    nome = col1.text_input("Nome", value=item.nome, key=f"edit_nome_{item_id}")
     tipo = col2.selectbox(
         "Tipo", TIPOS_ITEM,
-        index=TIPOS_ITEM.index(skin.tipo) if skin.tipo in TIPOS_ITEM else 0,
-        key=f"edit_tipo_{skin_id}",
+        index=TIPOS_ITEM.index(item.tipo) if item.tipo in TIPOS_ITEM else 0,
+        key=f"edit_tipo_{item_id}",
     )
 
-    col3, col4, col5 = st.columns(3)
-    desgaste = col3.selectbox(
-        "Desgaste", DESGASTES,
-        index=DESGASTES.index(skin.desgaste) if skin.desgaste in DESGASTES else 0,
-        key=f"edit_desgaste_{skin_id}",
-    )
-    float_val = col4.number_input(
-        "Float Value", min_value=0.0, max_value=1.0,
-        value=skin.float_value, format="%.6f",
-        key=f"edit_float_{skin_id}",
-    )
-    stattrak = col5.selectbox(
-        "StatTrak", ["Nao", "Sim", "N/A"],
-        index=["Nao", "Sim", "N/A"].index(skin.stattrak) if skin.stattrak in ["Nao", "Sim", "N/A"] else 0,
-        key=f"edit_stattrak_{skin_id}",
-    )
+    is_lote = tipo not in [TipoItem.ARMA, TipoItem.FACA, TipoItem.LUVA]
 
-    col6, col7 = st.columns(2)
-    pattern = col6.text_input("Pattern / Seed", value=skin.pattern_seed, key=f"edit_pattern_{skin_id}")
-    market_hash = col7.text_input("Market Hash Name", value=skin.market_hash_name, key=f"edit_hash_{skin_id}")
+    col3, col4 = st.columns(2)
+    if is_lote:
+        quantidade = col3.number_input("Quantidade", min_value=1, value=item.quantidade, step=1, key=f"edit_qtd_{item_id}")
+        desgaste = "N/A"
+        float_val = 0.0
+        pattern = "N/A"
+        stattrak = "N/A"
+        col4.selectbox("Desgaste", ["N/A"], index=0, disabled=True, key=f"edit_desgaste_dis_{item_id}")
+    else:
+        quantidade = 1
+        col3.number_input("Quantidade (Fixo em 1 para Armas)", min_value=1, max_value=1, value=1, disabled=True, key=f"edit_qtd_dis_{item_id}")
+        desgaste = col4.selectbox(
+            "Desgaste", DESGASTES,
+            index=DESGASTES.index(item.desgaste) if item.desgaste in DESGASTES else 0,
+            key=f"edit_desgaste_{item_id}",
+        )
+        c_float, c_pat, c_st = st.columns(3)
+        float_val = c_float.number_input(
+            "Float Value", min_value=0.0, max_value=1.0,
+            value=item.float_value, format="%.6f",
+            key=f"edit_float_{item_id}",
+        )
+        stattrak = c_st.selectbox(
+            "StatTrak", ["Não", "Sim", "N/A"],
+            index=["Não", "Sim", "N/A"].index(item.stattrak) if item.stattrak in ["Não", "Sim", "N/A"] else 0,
+            key=f"edit_stattrak_{item_id}",
+        )
+        pattern = c_pat.text_input("Pattern / Seed", value=item.pattern_seed, key=f"edit_pattern_{item_id}")
+
+    col7 = st.columns(1)[0]
+    market_hash = col7.text_input("Market Hash Name", value=item.market_hash_name, key=f"edit_hash_{item_id}")
 
     col8, col9, col10 = st.columns(3)
     plataforma = col8.selectbox(
         "Plataforma", PLATAFORMAS,
-        index=PLATAFORMAS.index(skin.plataforma) if skin.plataforma in PLATAFORMAS else 0,
-        key=f"edit_plataforma_{skin_id}",
+        index=PLATAFORMAS.index(item.plataforma) if item.plataforma in PLATAFORMAS else 0,
+        key=f"edit_plataforma_{item_id}",
     )
     preco_compra = col9.number_input(
-        "Preco de Compra (R$)", min_value=0.0,
-        value=skin.preco_compra, format="%.2f",
-        key=f"edit_preco_{skin_id}",
+        "Preco de Compra Unitario (R$)", min_value=0.0,
+        value=item.preco_compra, format="%.2f",
+        key=f"edit_preco_{item_id}",
     )
     iof = col10.selectbox(
         "IOF Aplicavel?", ["Sim", "Nao"],
-        index=0 if skin.iof_aplicavel else 1,
-        key=f"edit_iof_{skin_id}",
+        index=0 if item.iof_aplicavel else 1,
+        key=f"edit_iof_{item_id}",
     )
 
-    notas = st.text_area("Notas", value=skin.notas, key=f"edit_notas_{skin_id}")
+    notas = st.text_area("Notas", value=item.notas, key=f"edit_notas_{item_id}")
 
     col_cancel, col_save = st.columns(2)
     with col_cancel:
-        if st.button("Cancelar", use_container_width=True, key=f"edit_cancel_{skin_id}"):
+        if st.button("Cancelar", use_container_width=True, key=f"edit_cancel_{item_id}"):
             st.rerun()
     with col_save:
-        salvar = st.button("Salvar Alteracoes", type="primary", use_container_width=True, key=f"edit_salvar_{skin_id}")
+        salvar = st.button("Salvar Alteracoes", type="primary", use_container_width=True, key=f"edit_salvar_{item_id}")
 
     if salvar:
-        skin.nome = nome.strip()
-        skin.tipo = tipo
-        skin.desgaste = desgaste
-        skin.float_value = float_val
-        skin.stattrak = stattrak
-        skin.pattern_seed = pattern.strip()
-        skin.market_hash_name = market_hash.strip()
-        skin.plataforma = plataforma
-        skin.preco_compra = preco_compra
-        skin.iof_aplicavel = iof == "Sim"
-        skin.notas = notas.strip()
-        atualizar_skin(skin)
-        st.success(f"{skin.nome} atualizada com sucesso.")
+        item.nome = nome.strip()
+        item.tipo = tipo
+        item.desgaste = desgaste
+        item.float_value = float_val
+        item.quantidade = quantidade
+        item.stattrak = stattrak
+        item.pattern_seed = pattern.strip() if not is_lote else "N/A"
+        item.market_hash_name = market_hash.strip()
+        item.plataforma = plataforma
+        item.preco_compra = preco_compra
+        item.iof_aplicavel = iof == "Sim"
+        item.notas = notas.strip()
+        atualizar_item(item)
+        st.success(f"{item.nome} atualizado com sucesso.")
         st.rerun()
 
 
 @st.dialog("Confirmar Remocao")
-def _dialog_remover(skin_id: str, skin_nome: str) -> None:
-    st.warning(f"Tem certeza que deseja remover **{skin_nome}**?")
-    st.caption("Esta acao nao pode ser desfeita.")
+def _dialog_remover(item_id: str, item_nome: str) -> None:
+    data = carregar_dados()
+    item = next((s for s in data.itens if s.id == item_id), None)
+    
+    st.warning(f"Tem certeza que deseja remover **{item_nome}**?")
+    
+    qtd_remover = 1
+    if item and item.quantidade > 1:
+        st.info(f"Voce possui {item.quantidade} unidades deste item. Quantos deseja remover?")
+        qtd_remover = st.number_input("Quantidade a remover", min_value=1, max_value=item.quantidade, value=item.quantidade, step=1)
+    else:
+        st.caption("Esta acao nao pode ser desfeita.")
 
     col_cancel, col_confirm = st.columns(2)
     with col_cancel:
-        if st.button("Cancelar", use_container_width=True, key=f"rm_cancel_{skin_id}"):
+        if st.button("Cancelar", use_container_width=True, key=f"rm_cancel_{item_id}"):
             st.rerun()
     with col_confirm:
-        if st.button("Remover", type="primary", use_container_width=True, key=f"rm_confirm_{skin_id}"):
-            remover_skin(skin_id)
-            st.success(f"**{skin_nome}** removida!")
+        if st.button("Remover", type="primary", use_container_width=True, key=f"rm_confirm_{item_id}"):
+            remover_item(item_id, qtd_remover)
+            st.success(f"**{item_nome}** removido(a)!")
             st.rerun()
 
 
-# ── Listagem de skins em cards ───────────────────────────────────────
+# ── Listagem de itens em cards ───────────────────────────────────────
 
 
-def _render_skin_card(skin: Skin, iof_percentual: float) -> None:
-    """Renderiza um card individual para uma skin."""
-    lucro = skin.lucro_com_taxa(iof_percentual)
-    variacao = skin.variacao_pct_com_taxa(iof_percentual)
-    total_iof = skin.total_com_iof_com_taxa(iof_percentual)
+def _render_item_card(item: Item, iof_percentual: float) -> None:
+    """Renderiza um card individual para uma item."""
+    lucro = item.lucro_com_taxa(iof_percentual)
+    variacao = item.variacao_pct_com_taxa(iof_percentual)
+    total_iof = item.total_com_iof_com_taxa(iof_percentual)
 
     cor_lucro = "green" if lucro > 0 else ("red" if lucro < 0 else "gray")
 
@@ -307,44 +376,47 @@ def _render_skin_card(skin: Skin, iof_percentual: float) -> None:
         
         with col_nome:
             badges = []
-            if skin.tipo:
-                badges.append(f"`{skin.tipo}`")
-            if skin.desgaste and skin.desgaste != "N/A":
-                badges.append(f"`{skin.desgaste}`")
-            if skin.stattrak == "Sim":
+            if item.quantidade > 1:
+                badges.append(f"`x{item.quantidade}`")
+            if item.tipo:
+                badges.append(f"`{item.tipo}`")
+            if item.desgaste and item.desgaste != "N/A":
+                badges.append(f"`{item.desgaste}`")
+            if item.stattrak == "Sim":
                 badges.append("`StatTrak™`")
-            st.markdown(f"**{skin.nome}**  {' '.join(badges)}")
+            st.markdown(f"**{item.nome}**  {' '.join(badges)}")
             
             info_parts = []
-            if skin.float_value > 0: info_parts.append(f"🎯 Float: {skin.float_value:.5f}")
-            if skin.status_preco() != "Ao vivo": info_parts.append(f"⏱️ {skin.status_preco()}")
-            if skin.plataforma: info_parts.append(f"📦 {skin.plataforma}")
+            if item.float_value > 0: info_parts.append(f"🎯 Float: {item.float_value:.5f}")
+            if item.status_preco() != "Ao vivo": info_parts.append(f"⏱️ {item.status_preco()}")
+            if item.plataforma: info_parts.append(f"📦 {item.plataforma}")
             if info_parts: st.caption(" · ".join(info_parts))
             
         with col_compra:
             st.metric("Compra", f"R$ {total_iof:,.2f}")
             
         with col_atual:
-            st.metric("Atual", f"R$ {skin.preco_atual:,.2f}")
+            total_atual = item.preco_atual * item.quantidade
+            st.metric("Atual", f"R$ {total_atual:,.2f}")
             
         with col_lucro:
             st.metric("Lucro", f"R$ {lucro:,.2f}", delta=f"{variacao:+.1%}", delta_color="normal" if lucro != 0 else "off")
             
         with col_acoes:
-            if st.button("✏️", key=f"btn_edit_{skin.id}", help="Editar skin", use_container_width=True, type="primary"):
-                _dialog_editar(skin.id)
-            if st.button("🗑️", key=f"btn_del_{skin.id}", help="Remover skin", use_container_width=True, type="primary"):
-                _dialog_remover(skin.id, skin.nome)
+            if st.button("✏️", key=f"btn_edit_{item.id}", help="Editar item", use_container_width=True, type="primary"):
+                _dialog_editar(item.id)
+            if st.button("🗑️", key=f"btn_del_{item.id}", help="Remover item", use_container_width=True, type="primary"):
+                _dialog_remover(item.id, item.nome)
 
 
-def _render_listagem(skins: list[Skin], iof_percentual: float) -> None:
-    """Renderiza a listagem completa de skins com botao de adicionar."""
-    if not skins:
-        st.info("Nenhuma skin corresponde aos filtros.")
+def _render_listagem(itens: list[Item], iof_percentual: float) -> None:
+    """Renderiza a listagem completa de itens com botao de adicionar."""
+    if not itens:
+        st.info("Nenhum item corresponde aos filtros.")
         return
 
-    for skin in skins:
-        _render_skin_card(skin, iof_percentual)
+    for item in itens:
+        _render_item_card(item, iof_percentual)
 
 
 # ── Main ─────────────────────────────────────────────────────────────
@@ -376,9 +448,15 @@ if hydrate_app_data_from_catalog(data):
 
 _hero(data)
 
-# Botao de adicionar no topo
-if st.button("➕ Adicionar Skin", type="primary", use_container_width=True, key="btn_adicionar_topo"):
-    _dialog_adicionar()
+# Botoes de acao no topo
+col_add, col_seed = st.columns([3, 1])
+with col_add:
+    if st.button("➕ Adicionar Item", type="primary", use_container_width=True, key="btn_adicionar_topo"):
+        _dialog_adicionar()
+with col_seed:
+    if st.button("💾 Salvar Seed", use_container_width=True, key="btn_salvar_seed", help="Exporta os dados atuais para data/seed.json"):
+        exportar_seed(data)
+        st.toast("Dados exportados para seed.json com sucesso!")
 
 st.divider()
 
@@ -411,21 +489,21 @@ with row2_col2:
         data = carregar_dados()
 
 # Filtros e listagem
-if data.skins:
-    filtradas = list(data.skins)
+if data.itens:
+    filtradas = list(data.itens)
 
     with st.expander("Filtros da carteira", expanded=False):
-        busca_termo = st.text_input("Buscar skin por nome", placeholder="Ex: AK-47", key="busca_skin_nome").strip().lower()
+        busca_termo = st.text_input("Buscar item por nome", placeholder="Ex: AK-47", key="busca_item_nome").strip().lower()
         
         fc1, fc2 = st.columns(2)
-        tipos = sorted({s.tipo for s in data.skins})
+        tipos = sorted({s.tipo for s in data.itens})
         tipo_filtro = fc1.multiselect("Tipo", tipos, default=tipos)
-        plataformas = sorted({s.plataforma for s in data.skins if s.plataforma})
+        plataformas = sorted({s.plataforma for s in data.itens if s.plataforma})
         plat_filtro = fc2.multiselect("Plataforma", plataformas, default=plataformas)
 
         filtradas = [
             s
-            for s in data.skins
+            for s in data.itens
             if s.tipo in tipo_filtro
             and s.plataforma in plat_filtro
             and (not busca_termo or busca_termo in s.nome.lower())
@@ -437,4 +515,4 @@ if data.skins:
     _render_listagem(filtradas, data.config.iof_percentual)
 else:
     st.divider()
-    _metricas_resumo(data.skins, data.config.iof_percentual)
+    _metricas_resumo(data.itens, data.config.iof_percentual)

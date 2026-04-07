@@ -7,8 +7,8 @@ APP_ICON = "🎮"
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
-DATA_FILE = DATA_DIR / "skins.json"
-DATA_FILE_BACKUP = DATA_DIR / "skins.backup.json"
+DATA_FILE = DATA_DIR / "itens.json"
+DATA_FILE_BACKUP = DATA_DIR / "itens.backup.json"
 PRICE_CACHE_FILE = DATA_DIR / "price_cache.json"
 PROVIDER_STATE_FILE = DATA_DIR / "provider_state.json"
 THUMBNAILS_DIR = DATA_DIR / "thumbs"

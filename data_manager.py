@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from config import DATA_DIR, DATA_FILE, DATA_FILE_BACKUP, SEED_FILE
-from models import AppData, Skin
+from models import AppData, Item, TipoItem
 
 logger = logging.getLogger(__name__)
 _APP_DATA_CACHE: dict[Path, tuple[float, AppData]] = {}
@@ -19,7 +19,11 @@ def _ensure_dir() -> None:
 
 def _read_app_data(path: Path) -> AppData:
     raw = path.read_text(encoding="utf-8")
-    return AppData.model_validate_json(raw)
+    data_dict = json.loads(raw)
+    if "items" in data_dict and "itens" not in data_dict:
+        data_dict["itens"] = data_dict.pop("items")
+        # Migrate old items to have quantidade=1 via Pydantic default
+    return AppData.model_validate(data_dict)
 
 
 def _get_cached_app_data(path: Path) -> AppData | None:
@@ -100,26 +104,44 @@ def salvar_dados(data: AppData) -> None:
     _set_cached_app_data(DATA_FILE, data)
 
 
-def adicionar_skin(skin: Skin) -> AppData:
-    """Adiciona uma skin e persiste."""
+def adicionar_item(item: Item) -> AppData:
+    """Adiciona um item, realizando fusao e media ponderada se agrupavel."""
     data = carregar_dados()
-    data.skins.append(skin)
+    
+    # Itens agrupaveis nao sao armas/facas/luvas
+    if item.tipo not in [TipoItem.ARMA, TipoItem.FACA, TipoItem.LUVA]:
+        existente = next((i for i in data.itens if i.nome == item.nome and i.id != item.id), None)
+        if existente:
+            total_gasto = (existente.preco_compra * existente.quantidade) + (item.preco_compra * item.quantidade)
+            nova_qtd = existente.quantidade + item.quantidade
+            existente.preco_compra = round(total_gasto / nova_qtd, 2)
+            existente.quantidade = nova_qtd
+            salvar_dados(data)
+            return data
+
+    data.itens.append(item)
     salvar_dados(data)
     return data
 
 
-def remover_skin(skin_id: str) -> AppData:
-    """Remove uma skin pelo ID e persiste."""
+def remover_item(item_id: str, qtd_remover: int = 0) -> AppData:
+    """Remove um item ou subtrai sua quantidade e persiste."""
     data = carregar_dados()
-    data.skins = [s for s in data.skins if s.id != skin_id]
+    for item in data.itens:
+        if item.id == item_id:
+            if qtd_remover > 0 and item.quantidade > qtd_remover:
+                item.quantidade -= qtd_remover
+            else:
+                data.itens.remove(item)
+            break
     salvar_dados(data)
     return data
 
 
-def atualizar_skin(skin: Skin) -> AppData:
-    """Atualiza uma skin existente."""
+def atualizar_item(item: Item) -> AppData:
+    """Atualiza um item existente."""
     data = carregar_dados()
-    data.skins = [skin if s.id == skin.id else s for s in data.skins]
+    data.itens = [item if i.id == item.id else i for i in data.itens]
     salvar_dados(data)
     return data
 
@@ -129,20 +151,34 @@ def salvar_config(data: AppData) -> None:
     salvar_dados(data)
 
 
+def exportar_seed(data: AppData) -> None:
+    """Exporta os dados atuais para o arquivo seed.json."""
+    _ensure_dir()
+    content = data.model_dump_json(indent=2)
+    _atomic_write(SEED_FILE, content)
+    logger.info("Dados exportados para %s", SEED_FILE)
+
+
 def importar_seed_data(seed_path: Path | None = None) -> AppData:
-    """Importa dados iniciais de um JSON seed se o arquivo principal nao existir."""
+    """Importa dados iniciais de um JSON seed se nao houver itens cadastrados."""
     _ensure_dir()
     if DATA_FILE.exists():
-        return carregar_dados()
+        data = carregar_dados()
+        if data.itens:
+            return data
 
     seed = seed_path or SEED_FILE
     if not seed.exists():
-        return AppData()
+        return carregar_dados() if DATA_FILE.exists() else AppData()
 
     try:
         raw = json.loads(seed.read_text(encoding="utf-8"))
-        skins = [Skin.model_validate(s) for s in raw.get("skins", [])]
-        data = AppData(skins=skins)
+        items_raw = raw.get("itens", raw.get("items", raw.get("skins", [])))
+        itens = [Item.model_validate(s) for s in items_raw]
+        if not itens:
+            return carregar_dados() if DATA_FILE.exists() else AppData()
+        data = carregar_dados() if DATA_FILE.exists() else AppData()
+        data.itens = itens
         salvar_dados(data)
         return data
     except Exception:
