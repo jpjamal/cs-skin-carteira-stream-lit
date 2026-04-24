@@ -6,6 +6,7 @@ services:
     container_name: cs2-skin-tracker
     volumes:
       - ./data:/app/data
+    command: streamlit run app.py --server.baseUrlPath /${APP_NAME}
     environment:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
@@ -16,8 +17,6 @@ services:
       - "traefik.docker.network=traefik_proxy"
       - "traefik.http.routers.cs2tracker.rule=PathPrefix(`/${APP_NAME}`)"
       - "traefik.http.routers.cs2tracker.entrypoints=web"
-      - "traefik.http.routers.cs2tracker.middlewares=cs2tracker-strip@docker"
-      - "traefik.http.middlewares.cs2tracker-strip.stripprefix.prefixes=/$APP_NAME"
       - "traefik.http.services.cs2tracker.loadbalancer.server.port=8501"
 
 networks:
