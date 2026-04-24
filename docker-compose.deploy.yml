@@ -6,9 +6,9 @@ services:
     container_name: cs2-skin-tracker
     volumes:
       - ./data:/app/data
-    command: streamlit run app.py --server.baseUrlPath /${APP_NAME}
     environment:
       - PYTHONUNBUFFERED=1
+      - STREAMLIT_SERVER_BASE_URL_PATH=/${APP_NAME}
     restart: unless-stopped
     networks:
       - traefik_proxy
