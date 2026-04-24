@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 
 class TipoItem(StrEnum):
@@ -140,6 +140,9 @@ class Item(BaseModel):
         return nome_base
 
 
+Skin = Item  # backward compat alias
+
+
 class ApiConfig(BaseModel):
     """Configuracoes de API keys."""
 
@@ -179,3 +182,14 @@ class AppData(BaseModel):
 
     itens: list[Item] = Field(default_factory=list)
     config: ApiConfig = Field(default_factory=ApiConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _compat_skins(cls, values: object) -> object:
+        if isinstance(values, dict) and "skins" in values and "itens" not in values:
+            values["itens"] = values.pop("skins")
+        return values
+
+    @property
+    def skins(self) -> list[Item]:
+        return self.itens

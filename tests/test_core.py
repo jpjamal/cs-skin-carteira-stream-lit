@@ -94,13 +94,13 @@ class StorageBackupTests(unittest.TestCase):
                 data_manager.DATA_FILE = temp_path / "skins.json"
                 data_manager.DATA_FILE_BACKUP = temp_path / "skins.backup.json"
 
-                valid_data = AppData(skins=[Skin(nome="M4A1-S | Basilisk")])
+                valid_data = AppData(itens=[Skin(nome="M4A1-S | Basilisk")])
                 data_manager.DATA_FILE_BACKUP.write_text(valid_data.model_dump_json(indent=2), encoding="utf-8")
                 data_manager.DATA_FILE.write_text("{invalid json", encoding="utf-8")
 
                 loaded = data_manager.carregar_dados()
-                self.assertEqual(len(loaded.skins), 1)
-                self.assertEqual(loaded.skins[0].nome, "M4A1-S | Basilisk")
+                self.assertEqual(len(loaded.itens), 1)
+                self.assertEqual(loaded.itens[0].nome, "M4A1-S | Basilisk")
             finally:
                 data_manager.DATA_FILE = original_data_file
                 data_manager.DATA_FILE_BACKUP = original_backup_file
