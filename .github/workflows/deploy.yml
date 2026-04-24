@@ -85,7 +85,6 @@ jobs:
             --exclude='.env.*' \
             --exclude='.git/' \
             --exclude='.github/' \
-            --exclude='data/' \
             --exclude='__pycache__/' \
             --exclude='*.pyc' \
             --exclude='README.md' \
