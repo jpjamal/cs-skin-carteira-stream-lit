@@ -42,7 +42,7 @@ class CSFloatEstimationTests(unittest.TestCase):
         preco, usados, metodo = provider._estimar_por_float(sales, target_float=0.15, margem=0.01)
         self.assertGreater(preco, 0)
         self.assertGreater(usados, 0)
-        self.assertIn("historico float", metodo)
+        self.assertIn("listings float", metodo)
         # Com margem 0.01 do target 0.15, os 3 primeiros (0.148-0.151) sao selecionados
         # mediana de [100.0, 105.0, 110.0] = 105.0
         self.assertEqual(preco, 105.0)
@@ -59,7 +59,7 @@ class CSFloatEstimationTests(unittest.TestCase):
         # margem 0.005 nao pega nenhum (target=0.15), deve ampliar
         preco, usados, metodo = provider._estimar_por_float(sales, target_float=0.15, margem=0.005)
         self.assertGreater(preco, 0)
-        self.assertIn("historico float", metodo)
+        self.assertIn("listings float", metodo)
 
     def test_general_estimation_uses_all_sales(self) -> None:
         provider = CSFloatProvider("key")
@@ -77,7 +77,7 @@ class CSFloatEstimationTests(unittest.TestCase):
         sales = [
             {"item": {"icon_url": "-9a81-example-icon"}},
         ]
-        image_url = provider._extrair_imagem_url(sales)
+        image_url = provider._extrair_imagem_url_listings(sales)
         self.assertIn("community.cloudflare.steamstatic.com/economy/image", image_url)
         self.assertIn("-9a81-example-icon", image_url)
 
@@ -228,7 +228,7 @@ class CatalogServiceTests(unittest.TestCase):
                     tipo="Arma",
                     desgaste="Factory New (FN)",
                 )
-                changed = catalog_service.hydrate_skin_from_catalog(skin)
+                changed = catalog_service.hydrate_item_from_catalog(skin)
                 self.assertTrue(changed)
                 self.assertEqual(skin.market_hash_name, "AK-47 | Slate (Factory New)")
                 self.assertIn("community.akamai.steamstatic.com", skin.imagem_url)
@@ -249,7 +249,7 @@ class ByMykelCatalogTests(unittest.TestCase):
         self.assertEqual(
             infer_required_sources(raw_skins),
             [
-                "skins_not_grouped.json",
+                "items_not_grouped.json",
                 "stickers.json",
                 "agents.json",
                 "collectibles.json",
@@ -321,8 +321,8 @@ class CatalogSyncTests(unittest.TestCase):
                 client = ByMykelCatalogClient(cache_dir=temp_path / "catalog_cache", session=session)
                 result = sync_catalog_snapshot(client=client)
 
-                self.assertEqual(result.matched_skins, 1)
-                self.assertEqual(result.hydrated_skins, 1)
+                self.assertEqual(result.matched_items, 1)
+                self.assertEqual(result.hydrated_items, 1)
                 self.assertTrue((temp_path / "current_skin_catalog.json").exists())
 
                 reloaded = data_manager.carregar_dados()
