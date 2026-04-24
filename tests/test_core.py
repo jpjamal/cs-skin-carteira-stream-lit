@@ -205,7 +205,7 @@ class CatalogServiceTests(unittest.TestCase):
             snapshot_file.write_text(
                 """
 {
-  "items_by_skin_id": {
+  "items_by_item_id": {
     "abc123": {
       "market_hash_name": "AK-47 | Slate (Factory New)",
                     "image": "https://community.akamai.steamstatic.com/economy/image/test"
