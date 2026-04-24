@@ -75,11 +75,11 @@ jobs:
       - name: Ensure directory exists
         run: |
           ssh -i ~/.ssh/deploy_key ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }} \
-            "mkdir -p ~/${{ env.APP_NAME }}"
+            "mkdir -p ~/${{ env.APP_NAME }}/data"
 
       - name: Sync files to server
         run: |
-          rsync -avz --delete \
+          rsync -avz --delete --no-owner --no-group \
             -e "ssh -i ~/.ssh/deploy_key" \
             --exclude='.env' \
             --exclude='.env.*' \
