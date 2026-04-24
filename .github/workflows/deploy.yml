@@ -1,0 +1,132 @@
+name: Deploy CS2 Skin Tracker
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  APP_NAME: cs2-carteira
+  COMPOSE_FILE: docker-compose.deploy.yml
+
+jobs:
+  # ========== TEST ==========
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+
+      - name: Run unit tests
+        run: python -m pytest tests/ -v
+
+      - name: Streamlit smoke test
+        run: |
+          python - <<'EOF'
+          from streamlit.testing.v1 import AppTest
+          at = AppTest.from_file("app.py", default_timeout=30)
+          at.run()
+          assert not at.exception, f"app.py raised: {at.exception}"
+          EOF
+
+  # ========== BUILD ==========
+  build:
+    name: Build
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate compose file
+        env:
+          APP_NAME: cs2-tracker
+        run: docker compose -f ${{ env.COMPOSE_FILE }} config > /dev/null
+
+      - name: Build Docker image
+        run: docker compose -f ${{ env.COMPOSE_FILE }} build
+
+  # ========== DEPLOY ==========
+  deploy:
+    name: Deploy to production
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ vars.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Ensure directory exists
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }} \
+            "mkdir -p ~/${{ env.APP_NAME }}"
+
+      - name: Sync files to server
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            --exclude='.env' \
+            --exclude='.env.*' \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='data/' \
+            --exclude='__pycache__/' \
+            --exclude='*.pyc' \
+            --exclude='README.md' \
+            ./ ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}:~/${{ env.APP_NAME }}/
+
+      - name: Generate .env.production on server
+        env:
+          APP_NAME: ${{ env.APP_NAME }}
+        run: |
+          echo '${{ toJSON(vars) }}' | jq -r '
+            to_entries
+            | map(select(.key | test("^(DEPLOY_HOST|DEPLOY_USER)$") | not))
+            | .[] | "\(.key)=\(.value)"
+          ' > /tmp/.env.production
+
+          echo "APP_NAME=$APP_NAME" >> /tmp/.env.production
+
+          scp -i ~/.ssh/deploy_key /tmp/.env.production \
+            ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}:~/${{ env.APP_NAME }}/.env.production
+          ssh -i ~/.ssh/deploy_key ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }} \
+            "chmod 600 ~/${{ env.APP_NAME }}/.env.production"
+          echo "✅ .env.production gerado"
+
+      - name: Deploy
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }} bash << 'EOF'
+            set -e
+            cd ~/${{ env.APP_NAME }}
+
+            echo "=== Building image ==="
+            docker compose -f ${{ env.COMPOSE_FILE }} --env-file .env.production build
+
+            echo "=== Applying changes ==="
+            docker compose -f ${{ env.COMPOSE_FILE }} --env-file .env.production up -d --remove-orphans
+
+            echo "=== Status ==="
+            sleep 3
+            docker compose -f ${{ env.COMPOSE_FILE }} --env-file .env.production ps
+
+            echo "=== Cleanup ==="
+            docker image prune -f
+
+            echo "✅ Deploy completo"
+          EOF
