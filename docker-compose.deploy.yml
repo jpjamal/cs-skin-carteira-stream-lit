@@ -1,0 +1,25 @@
+services:
+  cs2-tracker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cs2-skin-tracker
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    networks:
+      - traefik_proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_proxy"
+      - "traefik.http.routers.cs2tracker.rule=PathPrefix(`/${APP_NAME}`)"
+      - "traefik.http.routers.cs2tracker.entrypoints=web"
+      - "traefik.http.routers.cs2tracker.middlewares=cs2tracker-strip@docker"
+      - "traefik.http.middlewares.cs2tracker-strip.stripprefix.prefixes=/$APP_NAME"
+      - "traefik.http.services.cs2tracker.loadbalancer.server.port=8501"
+
+networks:
+  traefik_proxy:
+    external: true
